@@ -1,0 +1,1500 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lumia Living Images &rarr; Google Motion Photos Converter</title>
+  <style>
+    :root {
+      --bg-gradient: linear-gradient(135deg, #0b0f19 0%, #111827 50%, #0f172a 100%);
+      --surface: #1e293b;
+      --surface-card: rgba(30, 41, 59, 0.75);
+      --surface-hover: #334155;
+      --border: rgba(255, 255, 255, 0.1);
+      --border-accent: rgba(56, 189, 248, 0.4);
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --accent: #38bdf8;
+      --accent-hover: #0ea5e9;
+      --accent-glow: rgba(56, 189, 248, 0.25);
+      --success: #10b981;
+      --success-glow: rgba(16, 185, 129, 0.2);
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --console-bg: #090d16;
+      --shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+      --radius: 14px;
+    }
+
+    @media (prefers-color-scheme: light) {
+      :root:not([data-theme="dark"]) {
+        --bg-gradient: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 50%, #f8fafc 100%);
+        --surface: #ffffff;
+        --surface-card: rgba(255, 255, 255, 0.85);
+        --surface-hover: #f1f5f9;
+        --border: rgba(0, 0, 0, 0.1);
+        --border-accent: rgba(2, 132, 199, 0.4);
+        --text-main: #0f172a;
+        --text-muted: #64748b;
+        --accent: #0284c7;
+        --accent-hover: #0369a1;
+        --accent-glow: rgba(2, 132, 199, 0.15);
+        --success: #059669;
+        --success-glow: rgba(5, 150, 105, 0.15);
+        --warning: #d97706;
+        --danger: #dc2626;
+        --console-bg: #1e293b;
+        --shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.04);
+      }
+    }
+
+    :root[data-theme="dark"] {
+      --bg-gradient: linear-gradient(135deg, #0b0f19 0%, #111827 50%, #0f172a 100%);
+      --surface: #1e293b;
+      --surface-card: rgba(30, 41, 59, 0.75);
+      --surface-hover: #334155;
+      --border: rgba(255, 255, 255, 0.1);
+      --border-accent: rgba(56, 189, 248, 0.4);
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --accent: #38bdf8;
+      --accent-hover: #0ea5e9;
+      --accent-glow: rgba(56, 189, 248, 0.25);
+      --success: #10b981;
+      --success-glow: rgba(16, 185, 129, 0.2);
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --console-bg: #090d16;
+      --shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+      background: var(--bg-gradient);
+      color: var(--text-main);
+      min-height: 100vh;
+      padding: 24px 16px;
+      line-height: 1.5;
+    }
+
+    .container {
+      max-width: 960px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    /* Top Bar */
+    .top-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .back-link {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 500;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      border-radius: 20px;
+      background: var(--surface-card);
+      border: 1px solid var(--border);
+      transition: all 0.2s ease;
+    }
+
+    .back-link:hover {
+      color: var(--text-main);
+      border-color: var(--border-accent);
+      background: var(--surface-hover);
+    }
+
+    .theme-btn {
+      background: var(--surface-card);
+      border: 1px solid var(--border);
+      color: var(--text-main);
+      border-radius: 20px;
+      padding: 6px 14px;
+      font-size: 13px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      backdrop-filter: blur(8px);
+      transition: all 0.2s ease;
+    }
+
+    .theme-btn:hover {
+      background: var(--surface-hover);
+      border-color: var(--border-accent);
+    }
+
+    /* Header */
+    header {
+      background: var(--surface-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 28px 32px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(12px);
+      position: relative;
+      overflow: hidden;
+    }
+
+    header::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 4px;
+      background: linear-gradient(90deg, #38bdf8, #818cf8, #c084fc, #34d399);
+    }
+
+    .title-row {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 12px;
+    }
+
+    .icon-logo {
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, #0284c7, #6366f1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      flex-shrink: 0;
+      box-shadow: 0 4px 14px rgba(2, 132, 199, 0.4);
+    }
+
+    h1 {
+      font-size: 26px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .subtitle {
+      color: var(--text-muted);
+      font-size: 15px;
+      max-width: 760px;
+      margin-bottom: 18px;
+    }
+
+    /* Badges */
+    .badge-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text-main);
+    }
+
+    .badge-client {
+      border-color: rgba(16, 185, 129, 0.4);
+      background: var(--success-glow);
+      color: var(--success);
+    }
+
+    .badge-spec {
+      border-color: rgba(56, 189, 248, 0.4);
+      background: var(--accent-glow);
+      color: var(--accent);
+    }
+
+    .badge-compat {
+      border-color: rgba(129, 140, 248, 0.4);
+      background: rgba(129, 140, 248, 0.15);
+      color: #a5b4fc;
+    }
+
+    /* Cards */
+    .card {
+      background: var(--surface-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(12px);
+      transition: border-color 0.2s ease;
+    }
+
+    /* Drop Zone */
+    .drop-zone {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 40px 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      background: rgba(255, 255, 255, 0.02);
+      position: relative;
+    }
+
+    .drop-zone:hover, .drop-zone.drag-over {
+      border-color: var(--accent);
+      background: var(--accent-glow);
+      transform: translateY(-2px);
+    }
+
+    .drop-icon {
+      width: 56px;
+      height: 56px;
+      margin: 0 auto 16px;
+      color: var(--accent);
+      opacity: 0.9;
+    }
+
+    .drop-title {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+
+    .drop-subtitle {
+      font-size: 14px;
+      color: var(--text-muted);
+      margin-bottom: 20px;
+    }
+
+    .actions-row {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 12px;
+      margin-top: 14px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      border: none;
+      text-decoration: none;
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      pointer-events: none;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #0284c7, #2563eb);
+      color: #ffffff;
+      box-shadow: 0 4px 12px rgba(2, 132, 199, 0.3);
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      background: linear-gradient(135deg, #0369a1, #1d4ed8);
+      box-shadow: 0 6px 16px rgba(2, 132, 199, 0.4);
+      transform: translateY(-1px);
+    }
+
+    .btn-secondary {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text-main);
+    }
+
+    .btn-secondary:hover:not(:disabled) {
+      background: var(--surface-hover);
+      border-color: var(--border-accent);
+    }
+
+    .btn-convert {
+      background: linear-gradient(135deg, #10b981, #059669);
+      color: #ffffff;
+      font-size: 15px;
+      padding: 12px 28px;
+      box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35);
+    }
+
+    .btn-convert:hover:not(:disabled) {
+      background: linear-gradient(135deg, #059669, #047857);
+      box-shadow: 0 6px 18px rgba(16, 185, 129, 0.45);
+      transform: translateY(-1px);
+    }
+
+    /* Statistics Grid */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 14px;
+      margin: 18px 0;
+    }
+
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 16px;
+      text-align: center;
+      transition: all 0.2s ease;
+    }
+
+    .stat-card:hover {
+      border-color: var(--border-accent);
+      transform: translateY(-2px);
+    }
+
+    .stat-number {
+      font-size: 26px;
+      font-weight: 700;
+      color: var(--text-main);
+      margin-bottom: 2px;
+    }
+
+    .stat-number.highlight {
+      color: var(--accent);
+    }
+
+    .stat-number.success {
+      color: var(--success);
+    }
+
+    .stat-label {
+      font-size: 12px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      font-weight: 600;
+    }
+
+    /* Status Banner */
+    .status-banner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 14px 18px;
+      border-radius: 10px;
+      background: rgba(56, 189, 248, 0.08);
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      margin-top: 14px;
+    }
+
+    .status-text {
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .status-pill {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 12px;
+      background: var(--accent);
+      color: #0b0f19;
+      font-weight: 700;
+    }
+
+    /* Progress Section */
+    .progress-section {
+      margin-top: 20px;
+      display: none;
+    }
+
+    .progress-section.active {
+      display: block;
+    }
+
+    .progress-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 13px;
+      margin-bottom: 8px;
+    }
+
+    .progress-bar-bg {
+      height: 12px;
+      border-radius: 6px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      overflow: hidden;
+      position: relative;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #0284c7, #38bdf8, #10b981);
+      border-radius: 6px;
+      transition: width 0.2s ease;
+    }
+
+    /* Log Console */
+    .console-card {
+      background: var(--console-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .console-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 18px;
+      background: rgba(255, 255, 255, 0.03);
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .console-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .console-action-link {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 12px;
+      transition: color 0.15s;
+    }
+
+    .console-action-link:hover {
+      color: var(--text-main);
+    }
+
+    .console-body {
+      padding: 14px 16px;
+      font-family: ui-monospace, "Cascadia Code", "Fira Code", monospace;
+      font-size: 12px;
+      line-height: 1.6;
+      max-height: 280px;
+      min-height: 140px;
+      overflow-y: auto;
+      color: #cbd5e1;
+    }
+
+    .log-entry {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      margin-bottom: 4px;
+      word-break: break-word;
+    }
+
+    .log-time {
+      color: #64748b;
+      font-size: 11px;
+      flex-shrink: 0;
+    }
+
+    .log-badge {
+      font-size: 10px;
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-weight: 700;
+      flex-shrink: 0;
+      letter-spacing: 0.03em;
+    }
+
+    .log-badge-info {
+      background: rgba(56, 189, 248, 0.2);
+      color: #38bdf8;
+    }
+
+    .log-badge-success {
+      background: rgba(16, 185, 129, 0.2);
+      color: #34d399;
+    }
+
+    .log-badge-warning {
+      background: rgba(245, 158, 11, 0.2);
+      color: #fbbf24;
+    }
+
+    .log-badge-error {
+      background: rgba(239, 68, 68, 0.2);
+      color: #f87171;
+    }
+
+    /* Fallback Downloads List */
+    .downloads-card {
+      display: none;
+    }
+
+    .downloads-card.active {
+      display: block;
+    }
+
+    .downloads-list {
+      max-height: 240px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .download-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 14px;
+      font-size: 13px;
+    }
+
+    .download-item-name {
+      font-weight: 500;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 65%;
+    }
+
+    /* Footer */
+    footer {
+      text-align: center;
+      font-size: 13px;
+      color: var(--text-muted);
+      padding: 16px 0 24px;
+    }
+
+    /* Hidden file inputs */
+    input[type="file"] {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <!-- Top Bar -->
+    <div class="top-bar">
+      <a href="../" class="back-link" title="Return to Tools Hub">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="19" y1="12" x2="5" y2="12"></line>
+          <polyline points="12 19 5 12 12 5"></polyline>
+        </svg>
+        All Tools
+      </a>
+      <button class="theme-btn" id="themeToggleBtn" title="Toggle Light/Dark Theme">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="5"></circle>
+          <line x1="12" y1="1" x2="12" y2="3"></line>
+          <line x1="12" y1="21" x2="12" y2="23"></line>
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+          <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+          <line x1="1" y1="12" x2="3" y2="12"></line>
+          <line x1="21" y1="12" x2="23" y2="12"></line>
+          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+          <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+        </svg>
+        <span id="themeToggleText">Theme</span>
+      </button>
+    </div>
+
+    <!-- Header -->
+    <header>
+      <div class="title-row">
+        <div class="icon-logo">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="2" width="20" height="20" rx="4"></rect>
+            <circle cx="8.5" cy="8.5" r="1.5"></circle>
+            <polyline points="21 15 16 10 5 21"></polyline>
+            <polygon points="12 11 16 13.5 12 16" fill="currentColor"></polygon>
+          </svg>
+        </div>
+        <div>
+          <h1>Lumia Living Images &rarr; Google Motion Photos</h1>
+        </div>
+      </div>
+      <p class="subtitle">
+        Losslessly convert legacy Nokia Lumia / Windows Phone Living Images into standard Android Motion Photo 1.0 files directly inside your browser. No server uploads, 100% private and offline-capable.
+      </p>
+      <div class="badge-container">
+        <span class="badge badge-client">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+          </svg>
+          100% Client-Side
+        </span>
+        <span class="badge badge-spec">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <circle cx="12" cy="12" r="10"></circle>
+            <polygon points="10 8 16 12 10 16 10 8" fill="currentColor"></polygon>
+          </svg>
+          Android Motion Photo 1.0
+        </span>
+        <span class="badge badge-compat">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+          Google Pixel & Windows 11 Compatible
+        </span>
+      </div>
+    </header>
+
+    <!-- Source Input Card -->
+    <div class="card">
+      <div class="drop-zone" id="dropZone">
+        <svg class="drop-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+          <polyline points="12 11 12 17 15 14"></polyline>
+          <line x1="12" y1="17" x2="9" y2="14"></line>
+        </svg>
+        <div class="drop-title">Select or Drag Photo Folder Here</div>
+        <div class="drop-subtitle">Drag your Lumia photo folder here, or choose your folder to stream files directly into <code>converted_motion_photos/</code>.</div>
+
+        <div class="actions-row">
+          <button class="btn btn-primary" id="btnSelectFolder">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+            </svg>
+            Select Folder (Direct Auto-Save)
+          </button>
+          <button class="btn btn-secondary" id="btnSelectFallbackFolder">
+            Choose Folder (Fallback / Download)
+          </button>
+          <button class="btn btn-secondary" id="btnSelectFiles">
+            Choose Files
+          </button>
+        </div>
+      </div>
+
+      <!-- Hidden standard inputs for fallbacks -->
+      <input type="file" id="fallbackFolderInput" webkitdirectory directory multiple>
+      <input type="file" id="fallbackFileInput" multiple accept=".jpg,.jpeg,.mp4,.thm">
+
+      <!-- Statistics Dashboard -->
+      <div class="stats-grid" id="statsGrid">
+        <div class="stat-card">
+          <div class="stat-number" id="statTotalFiles">0</div>
+          <div class="stat-label">Total Files</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number highlight" id="statVideoClips">0</div>
+          <div class="stat-label">Video Clips</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number highlight" id="statStdPhotos">0</div>
+          <div class="stat-label">5MP Pairs</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number highlight" id="statHighResPhotos">0</div>
+          <div class="stat-label">PureView Pairs</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" id="statOrphans">0</div>
+          <div class="stat-label">Static / Orphans</div>
+        </div>
+      </div>
+
+      <!-- Status Banner & Convert Button -->
+      <div class="status-banner" id="statusBar">
+        <div class="status-text">
+          <span class="status-pill" id="modePill">READY</span>
+          <span id="statusMessage">Awaiting folder or file selection.</span>
+        </div>
+        <button class="btn btn-convert" id="btnConvert" disabled>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="5 3 19 12 5 21 5 3" fill="currentColor"></polygon>
+          </svg>
+          Convert to Motion Photos
+        </button>
+      </div>
+
+      <!-- Progress Section -->
+      <div class="progress-section" id="progressSection">
+        <div class="progress-header">
+          <span id="progressStatusText">Converting photos...</span>
+          <span id="progressPercentText" style="font-weight:700;">0%</span>
+        </div>
+        <div class="progress-bar-bg">
+          <div class="progress-bar-fill" id="progressBarFill"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Downloads Section (Fallback mode) -->
+    <div class="card downloads-card" id="downloadsCard">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <h3 style="font-size: 16px; font-weight:600;">Converted Motion Photos (Direct Downloads)</h3>
+        <button class="btn btn-secondary" id="btnDownloadAll" style="font-size: 12px; padding: 6px 12px;">
+          Download All
+        </button>
+      </div>
+      <div class="downloads-list" id="downloadsList"></div>
+    </div>
+
+    <!-- Console Log Card -->
+    <div class="console-card">
+      <div class="console-header">
+        <span>Activity Log</span>
+        <div class="console-actions">
+          <label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer; font-size:12px; color:var(--text-muted);">
+            <input type="checkbox" id="chkAutoScroll" checked> Auto-scroll
+          </label>
+          <button class="console-action-link" id="btnClearLog">Clear Log</button>
+        </div>
+      </div>
+      <div class="console-body" id="logConsole"></div>
+    </div>
+
+    <footer>
+      Windows Phone / Lumia Living Images to Google Motion Photo 1.0 Converter &bull; 100% Client-Side Engine
+    </footer>
+  </div>
+
+  <script>
+    /* =========================================================================
+     * 1. Motion Photo Engine (Android Motion Photo 1.0 + MicroVideo spec)
+     * ========================================================================= */
+
+    function createXmpPacket(videoLength) {
+      return `<x:xmpmeta xmlns:x="adobe:ns:meta/" x:xmptk="Adobe XMP Core 5.1.0-jc003">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about=""
+    xmlns:Camera="http://ns.google.com/photos/1.0/camera/"
+    xmlns:GCamera="http://ns.google.com/photos/1.0/camera/">
+   <Camera:MotionPhoto>1</Camera:MotionPhoto>
+   <Camera:MotionPhotoVersion>1</Camera:MotionPhotoVersion>
+   <Camera:MotionPhotoPresentationTimestampUs>0</Camera:MotionPhotoPresentationTimestampUs>
+   <GCamera:MicroVideo>1</GCamera:MicroVideo>
+   <GCamera:MicroVideoVersion>1</GCamera:MicroVideoVersion>
+   <GCamera:MicroVideoOffset>${videoLength}</GCamera:MicroVideoOffset>
+   <GCamera:MicroVideoPresentationTimestampUs>0</GCamera:MicroVideoPresentationTimestampUs>
+  </rdf:Description>
+  <rdf:Description rdf:about=""
+    xmlns:Container="http://ns.google.com/photos/1.0/container/"
+    xmlns:Item="http://ns.google.com/photos/1.0/container/item/">
+   <Container:Directory>
+    <rdf:Seq>
+     <rdf:li>
+      <rdf:Description
+        Item:Mime="image/jpeg"
+        Item:Semantic="Primary"
+        Item:Length="0"
+        Item:Padding="0"/>
+     </rdf:li>
+     <rdf:li>
+      <rdf:Description
+        Item:Mime="video/mp4"
+        Item:Semantic="MotionPhoto"
+        Item:Length="${videoLength}"
+        Item:Padding="0"/>
+     </rdf:li>
+    </rdf:Seq>
+   </Container:Directory>
+  </rdf:Description>
+ </rdf:RDF>
+</x:xmpmeta>`;
+    }
+
+    function createApp1XmpSegment(xmpString) {
+      const encoder = new TextEncoder();
+      const xmpBytes = encoder.encode(xmpString);
+      const xmpHeader = encoder.encode('http://ns.adobe.com/xap/1.0/\0'); // 29 bytes
+      const payloadLength = xmpHeader.length + xmpBytes.length;
+      const segmentLength = payloadLength + 2; // includes 2 bytes for length field
+
+      const segment = new Uint8Array(2 + segmentLength);
+      segment[0] = 0xFF;
+      segment[1] = 0xE1;
+      segment[2] = (segmentLength >> 8) & 0xFF;
+      segment[3] = segmentLength & 0xFF;
+      segment.set(xmpHeader, 4);
+      segment.set(xmpBytes, 4 + xmpHeader.length);
+      return segment;
+    }
+
+    function spliceMotionPhoto(jpegBytes, videoBytes) {
+      if (jpegBytes[0] !== 0xFF || jpegBytes[1] !== 0xD8) {
+        throw new Error('Invalid JPEG: Missing SOI marker (FF D8)');
+      }
+
+      // Scan JPEG segments to find where to insert the XMP APP1 block
+      // Ideally, insert right after EXIF APP1 (if present), or right after SOI (index 2)
+      let insertPos = 2;
+      let offset = 2;
+
+      while (offset < jpegBytes.length - 4) {
+        if (jpegBytes[offset] !== 0xFF) break;
+        const marker = jpegBytes[offset + 1];
+        if (marker === 0xD9 || marker === 0xDA) { // EOI or SOS (Start of Scan)
+          break;
+        }
+        const segLength = (jpegBytes[offset + 2] << 8) | jpegBytes[offset + 3];
+        // If it's an EXIF APP1 segment (FF E1 followed by 'Exif\0\0')
+        if (marker === 0xE1 && offset + 10 <= jpegBytes.length) {
+          const isExif = jpegBytes[offset + 4] === 0x45 && // E
+                         jpegBytes[offset + 5] === 0x78 && // x
+                         jpegBytes[offset + 6] === 0x69 && // i
+                         jpegBytes[offset + 7] === 0x66 && // f
+                         jpegBytes[offset + 8] === 0x00 &&
+                         jpegBytes[offset + 9] === 0x00;
+          if (isExif) {
+            insertPos = offset + 2 + segLength;
+          }
+        }
+        offset += 2 + segLength;
+      }
+
+      const xmpString = createXmpPacket(videoBytes.length);
+      const app1Segment = createApp1XmpSegment(xmpString);
+
+      // Locate the end of the JPEG (EOI: FF D9)
+      let eoiPos = -1;
+      for (let i = jpegBytes.length - 2; i >= 0; i--) {
+        if (jpegBytes[i] === 0xFF && jpegBytes[i + 1] === 0xD9) {
+          eoiPos = i + 2;
+          break;
+        }
+      }
+      if (eoiPos === -1) {
+        throw new Error('Invalid JPEG: Missing EOI marker (FF D9)');
+      }
+
+      // Total buffer length: jpeg prefix + new APP1 segment + jpeg rest + video bytes
+      const totalLength = insertPos + app1Segment.length + (eoiPos - insertPos) + videoBytes.length;
+      const result = new Uint8Array(totalLength);
+
+      let writePos = 0;
+      result.set(jpegBytes.subarray(0, insertPos), writePos);
+      writePos += insertPos;
+
+      result.set(app1Segment, writePos);
+      writePos += app1Segment.length;
+
+      result.set(jpegBytes.subarray(insertPos, eoiPos), writePos);
+      writePos += (eoiPos - insertPos);
+
+      result.set(videoBytes, writePos);
+
+      return result;
+    }
+
+    /* =========================================================================
+     * 2. Media Pairing Logic
+     * ========================================================================= */
+
+    function parseBaseName(filename) {
+      const lower = filename.toLowerCase();
+
+      // Video snippet: e.g. WP_..._Pro.mp4.thm or WP_..._Pro.mp4
+      if (lower.endsWith('.mp4.thm')) {
+        const base = filename.slice(0, -'.mp4.thm'.length);
+        return { base, isVideo: true, isHighRes: false, isStandardJpg: false };
+      }
+      if (lower.endsWith('.mp4') && !lower.includes('storyteller')) {
+        const base = filename.slice(0, -'.mp4'.length);
+        return { base, isVideo: true, isHighRes: false, isStandardJpg: false };
+      }
+
+      // High-res photo: e.g. WP_..._Pro__highres.jpg
+      if (lower.endsWith('__highres.jpg') || lower.endsWith('__highres.jpeg')) {
+        const ext = lower.endsWith('.jpeg') ? '.jpeg' : '.jpg';
+        const base = filename.slice(0, -(ext.length + '__highres'.length));
+        return { base, isVideo: false, isHighRes: true, isStandardJpg: false };
+      }
+
+      // Standard photo: e.g. WP_..._Pro.jpg
+      if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) {
+        const ext = lower.endsWith('.jpeg') ? '.jpeg' : '.jpg';
+        const base = filename.slice(0, -ext.length);
+        return { base, isVideo: false, isHighRes: false, isStandardJpg: true };
+      }
+
+      return null;
+    }
+
+    function matchMediaPairs(files) {
+      const videosByBase = new Map();
+      const stdPhotosByBase = new Map();
+      const highResPhotosByBase = new Map();
+      const allNames = new Set(files.map(f => f.name));
+
+      for (const item of files) {
+        const info = parseBaseName(item.name);
+        if (!info) continue;
+        if (info.isVideo) {
+          const existing = videosByBase.get(info.base);
+          if (!existing || (!existing.name.toLowerCase().endsWith('.mp4.thm') && item.name.toLowerCase().endsWith('.mp4.thm'))) {
+            videosByBase.set(info.base, item);
+          }
+        } else if (info.isHighRes) {
+          highResPhotosByBase.set(info.base, item);
+        } else if (info.isStandardJpg) {
+          stdPhotosByBase.set(info.base, item);
+        }
+      }
+
+      const pairs = [];
+      const matchedPhotos = new Set();
+
+      for (const [base, videoItem] of videosByBase.entries()) {
+        const targetPhotos = [];
+        const stdPhoto = stdPhotosByBase.get(base);
+        if (stdPhoto) {
+          targetPhotos.push({
+            photoFile: stdPhoto,
+            outName: stdPhoto.name,
+            isHighRes: false
+          });
+          matchedPhotos.add(stdPhoto.name);
+        }
+
+        const highResPhoto = highResPhotosByBase.get(base);
+        if (highResPhoto) {
+          targetPhotos.push({
+            photoFile: highResPhoto,
+            outName: highResPhoto.name,
+            isHighRes: true
+          });
+          matchedPhotos.add(highResPhoto.name);
+        }
+
+        if (targetPhotos.length > 0) {
+          pairs.push({
+            videoFile: videoItem,
+            targetPhotos
+          });
+        }
+      }
+
+      const orphans = [];
+      for (const name of allNames) {
+        const info = parseBaseName(name);
+        if (info && !info.isVideo && !matchedPhotos.has(name)) {
+          orphans.push(name);
+        }
+      }
+
+      return { pairs, orphans };
+    }
+
+    // Expose engine to window for debugging or verification
+    window.MotionPhotoEngine = {
+      createXmpPacket,
+      createApp1XmpSegment,
+      spliceMotionPhoto,
+      parseBaseName,
+      matchMediaPairs
+    };
+
+    /* =========================================================================
+     * 3. UI Controller & Application State
+     * ========================================================================= */
+
+    let currentDirectoryHandle = null;
+    let scannedFiles = [];
+    let mediaPairsResult = null;
+    let isConverting = false;
+    let convertedBlobs = [];
+
+    // DOM Elements
+    const dropZone = document.getElementById('dropZone');
+    const btnSelectFolder = document.getElementById('btnSelectFolder');
+    const btnSelectFallbackFolder = document.getElementById('btnSelectFallbackFolder');
+    const btnSelectFiles = document.getElementById('btnSelectFiles');
+    const fallbackFolderInput = document.getElementById('fallbackFolderInput');
+    const fallbackFileInput = document.getElementById('fallbackFileInput');
+    const btnConvert = document.getElementById('btnConvert');
+    const modePill = document.getElementById('modePill');
+    const statusMessage = document.getElementById('statusMessage');
+    const progressSection = document.getElementById('progressSection');
+    const progressBarFill = document.getElementById('progressBarFill');
+    const progressPercentText = document.getElementById('progressPercentText');
+    const progressStatusText = document.getElementById('progressStatusText');
+    const logConsole = document.getElementById('logConsole');
+    const chkAutoScroll = document.getElementById('chkAutoScroll');
+    const btnClearLog = document.getElementById('btnClearLog');
+    const downloadsCard = document.getElementById('downloadsCard');
+    const downloadsList = document.getElementById('downloadsList');
+    const btnDownloadAll = document.getElementById('btnDownloadAll');
+    const themeToggleBtn = document.getElementById('themeToggleBtn');
+    const themeToggleText = document.getElementById('themeToggleText');
+
+    // Stat counters
+    const statTotalFiles = document.getElementById('statTotalFiles');
+    const statVideoClips = document.getElementById('statVideoClips');
+    const statStdPhotos = document.getElementById('statStdPhotos');
+    const statHighResPhotos = document.getElementById('statHighResPhotos');
+    const statOrphans = document.getElementById('statOrphans');
+
+    function formatBytes(bytes, decimals = 1) {
+      if (!bytes || bytes === 0) return '0 B';
+      const k = 1024;
+      const dm = decimals < 0 ? 0 : decimals;
+      const sizes = ['B', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+    }
+
+    function log(message, type = 'info') {
+      const time = new Date().toLocaleTimeString();
+      const entry = document.createElement('div');
+      entry.className = `log-entry`;
+
+      const timeSpan = document.createElement('span');
+      timeSpan.className = 'log-time';
+      timeSpan.textContent = `[${time}]`;
+
+      const badgeSpan = document.createElement('span');
+      badgeSpan.className = `log-badge log-badge-${type}`;
+      badgeSpan.textContent = type.toUpperCase();
+
+      const textSpan = document.createElement('span');
+      textSpan.className = 'log-text';
+      textSpan.textContent = message;
+
+      entry.appendChild(timeSpan);
+      entry.appendChild(badgeSpan);
+      entry.appendChild(textSpan);
+      logConsole.appendChild(entry);
+
+      if (chkAutoScroll.checked) {
+        logConsole.scrollTop = logConsole.scrollHeight;
+      }
+    }
+
+    function updateStatsUI(files, scan) {
+      let stdCount = 0;
+      let highResCount = 0;
+      for (const pair of scan.pairs) {
+        for (const target of pair.targetPhotos) {
+          if (target.isHighRes) highResCount++;
+          else stdCount++;
+        }
+      }
+
+      statTotalFiles.textContent = files.length;
+      statVideoClips.textContent = scan.pairs.length;
+      statStdPhotos.textContent = stdCount;
+      statHighResPhotos.textContent = highResCount;
+      statOrphans.textContent = scan.orphans.length;
+
+      const totalToConvert = stdCount + highResCount;
+
+      if (totalToConvert > 0) {
+        btnConvert.disabled = false;
+        modePill.textContent = 'READY';
+        modePill.style.background = 'var(--accent)';
+        if (currentDirectoryHandle) {
+          statusMessage.innerHTML = `Found <strong>${totalToConvert}</strong> motion photo pairs. Ready to auto-save into <code>converted_motion_photos/</code>.`;
+        } else {
+          statusMessage.innerHTML = `Found <strong>${totalToConvert}</strong> motion photo pairs. Direct download mode ready.`;
+        }
+      } else {
+        btnConvert.disabled = true;
+        modePill.textContent = 'NO PAIRS';
+        modePill.style.background = 'var(--warning)';
+        statusMessage.textContent = 'Scanned files, but found no matching (JPEG + MP4.thm) pairs.';
+      }
+    }
+
+    async function handleFileScan(filesList, directoryHandle = null) {
+      currentDirectoryHandle = directoryHandle;
+      scannedFiles = filesList;
+      log(`Scanning ${filesList.length} files...`, 'info');
+
+      mediaPairsResult = matchMediaPairs(filesList);
+      updateStatsUI(filesList, mediaPairsResult);
+
+      let totalTargets = 0;
+      for (const p of mediaPairsResult.pairs) totalTargets += p.targetPhotos.length;
+
+      log(`Scan complete: ${mediaPairsResult.pairs.length} video snippets matched with ${totalTargets} photos (${mediaPairsResult.orphans.length} static photos / orphans).`, 'success');
+      if (currentDirectoryHandle) {
+        log(`Direct stream mode active: output destination is "${currentDirectoryHandle.name}/converted_motion_photos"`, 'info');
+      } else {
+        log(`Download mode active: converted files will be downloaded directly.`, 'info');
+      }
+    }
+
+    /* =========================================================================
+     * 4. Directory & File Selection Handlers
+     * ========================================================================= */
+
+    // Modern Native Directory Picker (Chrome, Edge)
+    async function openDirectoryPicker() {
+      if (!window.showDirectoryPicker) {
+        log('Native Directory Picker is not supported or restricted in this browser environment. Using fallback folder picker.', 'warning');
+        fallbackFolderInput.click();
+        return;
+      }
+
+      try {
+        const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
+        log(`Selected directory: "${handle.name}"`, 'info');
+
+        const files = [];
+        for await (const entry of handle.values()) {
+          if (entry.kind === 'file') {
+            const file = await entry.getFile();
+            files.push({ name: entry.name, handle: entry, file });
+          }
+        }
+        await handleFileScan(files, handle);
+      } catch (err) {
+        if (err.name === 'AbortError') {
+          log('Folder selection was cancelled.', 'info');
+          return;
+        }
+        log(`Directory access notice: ${err.message}. Falling back to standard file picker.`, 'warning');
+        fallbackFolderInput.click();
+      }
+    }
+
+    // Fallback recursive file tree traversal for drag-and-drop entries
+    async function traverseFileTree(item, fileList) {
+      if (item.isFile) {
+        const file = await new Promise((resolve) => item.file(resolve));
+        fileList.push({ name: file.name, file: file });
+      } else if (item.isDirectory) {
+        const dirReader = item.createReader();
+        const readEntries = async () => {
+          const entries = await new Promise((resolve) => dirReader.readEntries(resolve));
+          if (entries.length > 0) {
+            for (const entry of entries) {
+              await traverseFileTree(entry, fileList);
+            }
+            await readEntries(); // Continue until exhausted
+          }
+        };
+        await readEntries();
+      }
+    }
+
+    // Drag and drop event listeners
+    dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropZone.classList.add('drag-over');
+    });
+
+    dropZone.addEventListener('dragleave', () => {
+      dropZone.classList.remove('drag-over');
+    });
+
+    dropZone.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('drag-over');
+
+      const items = e.dataTransfer.items;
+      let files = [];
+      let detectedDirHandle = null;
+
+      if (items && items.length > 0) {
+        // Attempt to get directory handle if supported
+        if (typeof items[0].getAsFileSystemHandle === 'function') {
+          try {
+            const handle = await items[0].getAsFileSystemHandle();
+            if (handle && handle.kind === 'directory') {
+              detectedDirHandle = handle;
+              const dirFiles = [];
+              for await (const entry of handle.values()) {
+                if (entry.kind === 'file') {
+                  const file = await entry.getFile();
+                  dirFiles.push({ name: entry.name, handle: entry, file });
+                }
+              }
+              await handleFileScan(dirFiles, handle);
+              return;
+            }
+          } catch (err) {
+            // Silently fall back to webkitGetAsEntry
+          }
+        }
+
+        const entriesList = [];
+        for (let i = 0; i < items.length; i++) {
+          const entry = items[i].webkitGetAsEntry ? items[i].webkitGetAsEntry() : null;
+          if (entry) {
+            await traverseFileTree(entry, entriesList);
+          }
+        }
+        if (entriesList.length > 0) {
+          files = entriesList;
+        }
+      }
+
+      if (files.length === 0 && e.dataTransfer.files.length > 0) {
+        files = Array.from(e.dataTransfer.files).map(f => ({ name: f.name, file: f }));
+      }
+
+      if (files.length > 0) {
+        await handleFileScan(files, null);
+      }
+    });
+
+    btnSelectFolder.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openDirectoryPicker();
+    });
+
+    btnSelectFallbackFolder.addEventListener('click', (e) => {
+      e.stopPropagation();
+      fallbackFolderInput.click();
+    });
+
+    btnSelectFiles.addEventListener('click', (e) => {
+      e.stopPropagation();
+      fallbackFileInput.click();
+    });
+
+    dropZone.addEventListener('click', () => {
+      if (window.showDirectoryPicker) {
+        openDirectoryPicker();
+      } else {
+        fallbackFolderInput.click();
+      }
+    });
+
+    fallbackFolderInput.addEventListener('change', async (e) => {
+      if (!e.target.files || e.target.files.length === 0) return;
+      const files = Array.from(e.target.files).map(f => ({ name: f.name, file: f }));
+      await handleFileScan(files, null);
+    });
+
+    fallbackFileInput.addEventListener('change', async (e) => {
+      if (!e.target.files || e.target.files.length === 0) return;
+      const files = Array.from(e.target.files).map(f => ({ name: f.name, file: f }));
+      await handleFileScan(files, null);
+    });
+
+    /* =========================================================================
+     * 5. Conversion Execution Loop
+     * ========================================================================= */
+
+    function triggerDownload(blob, filename) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }, 1500);
+    }
+
+    function addDownloadEntry(blob, filename, size) {
+      downloadsCard.classList.add('active');
+      const item = document.createElement('div');
+      item.className = 'download-item';
+
+      const nameSpan = document.createElement('span');
+      nameSpan.className = 'download-item-name';
+      nameSpan.textContent = `${filename} (${formatBytes(size)})`;
+
+      const dlBtn = document.createElement('button');
+      dlBtn.className = 'btn btn-secondary';
+      dlBtn.style.padding = '4px 10px';
+      dlBtn.style.fontSize = '12px';
+      dlBtn.textContent = 'Download';
+      dlBtn.onclick = () => triggerDownload(blob, filename);
+
+      item.appendChild(nameSpan);
+      item.appendChild(dlBtn);
+      downloadsList.appendChild(item);
+
+      convertedBlobs.push({ blob, filename });
+    }
+
+    btnDownloadAll.addEventListener('click', async () => {
+      for (let i = 0; i < convertedBlobs.length; i++) {
+        const item = convertedBlobs[i];
+        triggerDownload(item.blob, item.filename);
+        await new Promise(r => setTimeout(r, 300));
+      }
+    });
+
+    btnConvert.addEventListener('click', async () => {
+      if (isConverting || !mediaPairsResult || mediaPairsResult.pairs.length === 0) return;
+
+      isConverting = true;
+      btnConvert.disabled = true;
+      btnSelectFolder.disabled = true;
+      btnSelectFallbackFolder.disabled = true;
+      btnSelectFiles.disabled = true;
+      try {
+        convertedBlobs = [];
+        downloadsList.innerHTML = '';
+        downloadsCard.classList.remove('active');
+
+        progressSection.classList.add('active');
+        progressBarFill.style.width = '0%';
+        progressPercentText.textContent = '0%';
+
+        let totalTasks = 0;
+        for (const p of mediaPairsResult.pairs) totalTasks += p.targetPhotos.length;
+
+        let completedTasks = 0;
+        let errorTasks = 0;
+        const startTime = performance.now();
+
+        log(`--- Starting Conversion of ${totalTasks} Motion Photos ---`, 'info');
+
+        let outputDirHandle = null;
+        if (currentDirectoryHandle) {
+          try {
+            outputDirHandle = await currentDirectoryHandle.getDirectoryHandle('converted_motion_photos', { create: true });
+            log(`Created / verified target folder "converted_motion_photos".`, 'success');
+          } catch (err) {
+            log(`Failed to create output directory handle: ${err.message}. Switching to direct download mode.`, 'warning');
+            outputDirHandle = null;
+          }
+        }
+
+        for (let i = 0; i < mediaPairsResult.pairs.length; i++) {
+          const pair = mediaPairsResult.pairs[i];
+
+          // 1. Read Video Bytes
+          let videoBytes;
+          try {
+            const vFile = pair.videoFile.file || (await pair.videoFile.handle.getFile());
+            const vBuf = await vFile.arrayBuffer();
+            videoBytes = new Uint8Array(vBuf);
+
+            if (videoBytes.length < 8) {
+              throw new Error('Video clip payload too short (corrupt video)');
+            }
+          } catch (err) {
+            log(`Skipping video "${pair.videoFile.name}": ${err.message}`, 'error');
+            errorTasks += pair.targetPhotos.length;
+            continue;
+          }
+
+          // 2. Process each target photo paired with this video
+          for (const target of pair.targetPhotos) {
+            const outName = target.outName;
+            progressStatusText.textContent = `Converting ${outName}... (${completedTasks + 1} of ${totalTasks})`;
+
+            try {
+              const pFile = target.photoFile.file || (await target.photoFile.handle.getFile());
+              const pBuf = await pFile.arrayBuffer();
+              const jpegBytes = new Uint8Array(pBuf);
+
+              // Splicing
+              const motionPhotoBytes = spliceMotionPhoto(jpegBytes, videoBytes);
+
+              // Output writing
+              if (outputDirHandle) {
+                const outFileHandle = await outputDirHandle.getFileHandle(outName, { create: true });
+                const writable = await outFileHandle.createWritable();
+                await writable.write(motionPhotoBytes);
+                await writable.close();
+              } else {
+                const blob = new Blob([motionPhotoBytes], { type: 'image/jpeg' });
+                addDownloadEntry(blob, outName, motionPhotoBytes.length);
+                triggerDownload(blob, outName);
+                // Small delay between automatic downloads
+                await new Promise(r => setTimeout(r, 200));
+              }
+
+              completedTasks++;
+              log(`Converted: ${outName} (${formatBytes(motionPhotoBytes.length)}) [${target.isHighRes ? 'PureView High-Res' : 'Standard 5MP'}]`, 'success');
+            } catch (err) {
+              errorTasks++;
+              log(`Error converting "${outName}": ${err.message}`, 'error');
+            }
+
+            // Update Progress Bar
+            const currentPct = Math.round(((completedTasks + errorTasks) / totalTasks) * 100);
+            progressBarFill.style.width = `${currentPct}%`;
+            progressPercentText.textContent = `${currentPct}% (${completedTasks + errorTasks} / ${totalTasks})`;
+
+            // Yield execution to allow garbage collection and UI repaint
+            await new Promise(r => setTimeout(r, 10));
+          }
+        }
+
+        const totalDurationSec = ((performance.now() - startTime) / 1000).toFixed(1);
+        log(`--- Conversion Completed in ${totalDurationSec}s: ${completedTasks} succeeded, ${errorTasks} errors ---`, completedTasks > 0 ? 'success' : 'warning');
+
+        progressStatusText.textContent = `Complete! ${completedTasks} of ${totalTasks} converted successfully.`;
+        progressBarFill.style.width = '100%';
+        progressPercentText.textContent = '100%';
+        modePill.textContent = 'COMPLETED';
+        modePill.style.background = 'var(--success)';
+
+        if (outputDirHandle) {
+          statusMessage.innerHTML = `Done! <strong>${completedTasks}</strong> files saved to <code>converted_motion_photos/</code>.`;
+        } else {
+          statusMessage.innerHTML = `Done! <strong>${completedTasks}</strong> files converted. Check your downloads below.`;
+        }
+      } finally {
+        isConverting = false;
+        btnConvert.disabled = false;
+        btnSelectFolder.disabled = false;
+        btnSelectFallbackFolder.disabled = false;
+        btnSelectFiles.disabled = false;
+      }
+    });
+
+    /* =========================================================================
+     * 6. Console Controls & Theme Toggle
+     * ========================================================================= */
+
+    btnClearLog.addEventListener('click', () => {
+      logConsole.innerHTML = '';
+      log('Console cleared.', 'info');
+    });
+
+    // Theme toggle
+    let currentTheme = 'dark';
+    themeToggleBtn.addEventListener('click', () => {
+      if (document.documentElement.getAttribute('data-theme') === 'light') {
+        document.documentElement.setAttribute('data-theme', 'dark');
+        currentTheme = 'dark';
+        themeToggleText.textContent = 'Dark Mode';
+      } else {
+        document.documentElement.setAttribute('data-theme', 'light');
+        currentTheme = 'light';
+        themeToggleText.textContent = 'Light Mode';
+      }
+    });
+
+    // Initial greeting in log
+    log('Lumia Living Images &rarr; Google Motion Photos converter loaded.', 'info');
+    log('Ready to process files. Select a folder or drag files above.', 'info');
+  </script>
+</body>
+</html>

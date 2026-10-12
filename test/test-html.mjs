@@ -102,3 +102,16 @@ test('converter.html embedded engine functionality', () => {
   assert.strictEqual(matched.pairs[0].targetPhotos.length, 2);
   assert.ok(matched.orphans.includes('WP_20140915_22_34_26_Pro.jpg'));
 });
+
+test('root index.html (Tools Hub) integrity and navigation', () => {
+  const hubHtml = fs.readFileSync('index.html', 'utf8');
+
+  // Verify link to lumia tool
+  assert.ok(hubHtml.includes('lumia-motion-photo-converter'), 'Hub contains link to lumia-motion-photo-converter');
+  assert.ok(hubHtml.includes('In-Browser Web Tools'), 'Hub contains main heading');
+  assert.ok(hubHtml.includes('pentenrieder.dev'), 'Hub contains pentenrieder.dev branding');
+
+  // Verify zero external scripts/styles
+  assert.ok(!hubHtml.includes('<script src='), 'Hub has no external scripts');
+  assert.ok(!hubHtml.includes('<link rel="stylesheet" href='), 'Hub has no external stylesheets');
+});
