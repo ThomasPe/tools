@@ -78,4 +78,40 @@ test('matchMediaPairs handles single photo pair and empty lists', () => {
   const empty = matchMediaPairs([]);
   assert.equal(empty.pairs.length, 0);
   assert.equal(empty.orphans.length, 0);
+  assert.equal(empty.win10Images.length, 0);
 });
+
+test('parseBaseName classifies Windows 10 Mobile Living Images (*_LI.jpg)', () => {
+  const li = parseBaseName('WP_20160123_15_23_26_Pro_LI.jpg');
+  assert.equal(li.base, 'WP_20160123_15_23_26_Pro');
+  assert.equal(li.isWin10LivingImage, true);
+  assert.equal(li.isVideo, false);
+  assert.equal(li.isStandardJpg, false);
+  assert.equal(li.isHighRes, false);
+
+  const richLi = parseBaseName('WP_20160123_15_23_26_Rich_LI.jpeg');
+  assert.equal(richLi.base, 'WP_20160123_15_23_26_Rich');
+  assert.equal(richLi.isWin10LivingImage, true);
+
+  const highResLi = parseBaseName('WP_20160123_15_23_26_Pro__highres_LI.jpg');
+  assert.equal(highResLi.isWin10LivingImage, true);
+  assert.equal(highResLi.isHighRes, true);
+});
+
+test('matchMediaPairs groups Windows 10 Mobile Living Images into win10Images without orphaning them', () => {
+  const fileList = [
+    { name: 'WP_20160123_15_23_26_Pro_LI.jpg' },
+    { name: 'WP_20160123_15_23_26_Rich_LI.jpg' },
+    { name: 'WP_20140914_20_27_44_Pro.mp4.thm' },
+    { name: 'WP_20140914_20_27_44_Pro.jpg' },
+    { name: 'STATIC_PHOTO.jpg' }
+  ];
+
+  const result = matchMediaPairs(fileList);
+  assert.equal(result.pairs.length, 1);
+  assert.equal(result.win10Images.length, 2);
+  assert.equal(result.win10Images[0].outName, 'WP_20160123_15_23_26_Pro_LI.jpg');
+  assert.equal(result.win10Images[1].outName, 'WP_20160123_15_23_26_Rich_LI.jpg');
+  assert.deepEqual(result.orphans, ['STATIC_PHOTO.jpg']);
+});
+

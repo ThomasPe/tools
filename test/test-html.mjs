@@ -23,6 +23,7 @@ test('converter.html structure and integrity', () => {
 
   // Verify statistics
   assert.ok(html.includes('id="statTotalFiles"'), 'Contains total files stat');
+  assert.ok(html.includes('id="statWin10Photos"'), 'Contains win10 photos stat');
   assert.ok(html.includes('id="statVideoClips"'), 'Contains video clips stat');
   assert.ok(html.includes('id="statStdPhotos"'), 'Contains std photos stat');
   assert.ok(html.includes('id="statHighResPhotos"'), 'Contains high res photos stat');
@@ -52,6 +53,8 @@ test('converter.html embedded engine functionality', () => {
   // Mock DOM environment to evaluate the engine functions
   const mockGlobal = {
     TextEncoder,
+    TextDecoder,
+    DataView,
     Uint8Array,
     Map,
     Set,
@@ -85,11 +88,14 @@ test('converter.html embedded engine functionality', () => {
   const engine = fn(mockGlobal);
   assert.ok(engine, 'window.MotionPhotoEngine should be exposed');
   assert.strictEqual(typeof engine.spliceMotionPhoto, 'function');
+  assert.strictEqual(typeof engine.extractWin10LivingImage, 'function');
+  assert.strictEqual(typeof engine.convertWin10LivingImage, 'function');
   assert.strictEqual(typeof engine.matchMediaPairs, 'function');
   assert.strictEqual(typeof engine.parseBaseName, 'function');
 
   // Test pair matching with engine
   const files = [
+    { name: 'WP_20160123_15_23_26_Pro_LI.jpg' },
     { name: 'WP_20140915_14_31_23_Pro.jpg' },
     { name: 'WP_20140915_14_31_23_Pro__highres.jpg' },
     { name: 'WP_20140915_14_31_23_Pro.mp4.thm' },
@@ -98,10 +104,14 @@ test('converter.html embedded engine functionality', () => {
   ];
 
   const matched = engine.matchMediaPairs(files);
+  assert.strictEqual(matched.win10Images.length, 1);
+  assert.strictEqual(matched.win10Images[0].outName, 'WP_20160123_15_23_26_Pro_LI.jpg');
   assert.strictEqual(matched.pairs.length, 1);
   assert.strictEqual(matched.pairs[0].targetPhotos.length, 2);
   assert.ok(matched.orphans.includes('WP_20140915_22_34_26_Pro.jpg'));
+  assert.ok(!matched.orphans.includes('WP_20160123_15_23_26_Pro_LI.jpg'));
 });
+
 
 test('root index.html (Tools Hub) integrity and navigation', () => {
   const hubHtml = fs.readFileSync('index.html', 'utf8');

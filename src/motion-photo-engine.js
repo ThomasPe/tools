@@ -122,3 +122,225 @@ export function spliceMotionPhoto(jpegBytes, videoBytes) {
 
   return result;
 }
+
+/**
+ * Extracts the primary still JPEG and embedded living video stream from a
+ * Windows 10 Mobile Living Image (*_LI.jpg).
+ *
+ * Windows 10 Mobile appends an uncompressed ZIP archive after the primary JPEG's
+ * EOI marker (FF D9). The ZIP contains `formats/living/living.mp4` stored with
+ * compression method 0 (Stored / uncompressed).
+ *
+ * @param {Uint8Array} jpegBytes Raw binary buffer of the JPEG file.
+ * @returns {{ stillJpeg: Uint8Array, videoBytes: Uint8Array } | null} Extracted components, or null if not a Win10 Living Image.
+ */
+export function extractWin10LivingImage(jpegBytes) {
+  if (!jpegBytes || jpegBytes.length < 100) return null;
+  if (jpegBytes[0] !== 0xFF || jpegBytes[1] !== 0xD8) return null;
+
+  const len = jpegBytes.length;
+
+  // 1. Find ZIP EOCD marker (PK\x05\x06) searching backwards from the end
+  let eocdOffset = -1;
+  const minScan = Math.max(0, len - 65557);
+  for (let i = len - 22; i >= minScan; i--) {
+    if (jpegBytes[i] === 0x50 && jpegBytes[i+1] === 0x4B && jpegBytes[i+2] === 0x05 && jpegBytes[i+3] === 0x06) {
+      eocdOffset = i;
+      break;
+    }
+  }
+  if (eocdOffset === -1) return null;
+
+  const eocdView = new DataView(jpegBytes.buffer, jpegBytes.byteOffset + eocdOffset, 22);
+  let cdEntries = eocdView.getUint16(10, true);
+  let cdSize = eocdView.getUint32(12, true);
+  let cdOffset = eocdView.getUint32(16, true);
+
+  // 2. Check for ZIP64 Locator (PK\x06\x07) 20 bytes preceding EOCD
+  if (eocdOffset >= 20 &&
+      jpegBytes[eocdOffset - 20] === 0x50 &&
+      jpegBytes[eocdOffset - 19] === 0x4B &&
+      jpegBytes[eocdOffset - 18] === 0x06 &&
+      jpegBytes[eocdOffset - 17] === 0x07) {
+    const locView = new DataView(jpegBytes.buffer, jpegBytes.byteOffset + eocdOffset - 20, 20);
+    const zip64EocdPos = Number(locView.getBigUint64(8, true));
+    if (zip64EocdPos + 56 <= len &&
+        jpegBytes[zip64EocdPos] === 0x50 &&
+        jpegBytes[zip64EocdPos + 1] === 0x4B &&
+        jpegBytes[zip64EocdPos + 2] === 0x06 &&
+        jpegBytes[zip64EocdPos + 3] === 0x06) {
+      const z64View = new DataView(jpegBytes.buffer, jpegBytes.byteOffset + zip64EocdPos, 56);
+      cdEntries = Number(z64View.getBigUint64(32, true));
+      cdSize = Number(z64View.getBigUint64(40, true));
+      cdOffset = Number(z64View.getBigUint64(48, true));
+    }
+  }
+
+  // 3. Resolve Central Directory start position (handles absolute vs relative polyglot offsets)
+  let cdStart = cdOffset;
+  let isCdValid = (cdStart + 4 <= len &&
+                   jpegBytes[cdStart] === 0x50 &&
+                   jpegBytes[cdStart + 1] === 0x4B &&
+                   jpegBytes[cdStart + 2] === 0x01 &&
+                   jpegBytes[cdStart + 3] === 0x02);
+
+  let zipStartOffset = 0;
+  if (!isCdValid) {
+    zipStartOffset = eocdOffset - cdSize - cdOffset;
+    if (zipStartOffset >= 0 &&
+        zipStartOffset + cdOffset + 4 <= len &&
+        jpegBytes[zipStartOffset + cdOffset] === 0x50 &&
+        jpegBytes[zipStartOffset + cdOffset + 1] === 0x4B &&
+        jpegBytes[zipStartOffset + cdOffset + 2] === 0x01 &&
+        jpegBytes[zipStartOffset + cdOffset + 3] === 0x02) {
+      cdStart = zipStartOffset + cdOffset;
+      isCdValid = true;
+    }
+  }
+
+  if (!isCdValid) return null;
+
+  // 4. Scan Central Directory to find living.mp4
+  let cdPos = cdStart;
+  let targetEntry = null;
+  let firstLocalOffset = Infinity;
+
+  const decoder = new TextDecoder();
+  for (let c = 0; c < cdEntries; c++) {
+    if (cdPos + 46 > len) break;
+    if (jpegBytes[cdPos] !== 0x50 || jpegBytes[cdPos+1] !== 0x4B || jpegBytes[cdPos+2] !== 0x01 || jpegBytes[cdPos+3] !== 0x02) {
+      break;
+    }
+
+    const cdView = new DataView(jpegBytes.buffer, jpegBytes.byteOffset + cdPos, 46);
+    let compMethod = cdView.getUint16(10, true);
+    let compSize = cdView.getUint32(20, true);
+    let uncompSize = cdView.getUint32(24, true);
+    let fnLen = cdView.getUint16(28, true);
+    let extraLen = cdView.getUint16(30, true);
+    let commentLen = cdView.getUint16(32, true);
+    let localOffset = cdView.getUint32(42, true);
+
+    const fn = decoder.decode(jpegBytes.subarray(cdPos + 46, cdPos + 46 + fnLen));
+
+    // Check for ZIP64 extra fields (Tag 0x0001)
+    let extraPos = cdPos + 46 + fnLen;
+    const extraEnd = extraPos + extraLen;
+    while (extraPos + 4 <= extraEnd) {
+      const extraView = new DataView(jpegBytes.buffer, jpegBytes.byteOffset + extraPos, 4);
+      const tag = extraView.getUint16(0, true);
+      const tagSize = extraView.getUint16(2, true);
+      let tagDataPos = extraPos + 4;
+      if (tag === 0x0001) {
+        if (uncompSize === 0xFFFFFFFF && tagDataPos + 8 <= extraEnd) {
+          uncompSize = Number(new DataView(jpegBytes.buffer, jpegBytes.byteOffset + tagDataPos, 8).getBigUint64(0, true));
+          tagDataPos += 8;
+        }
+        if (compSize === 0xFFFFFFFF && tagDataPos + 8 <= extraEnd) {
+          compSize = Number(new DataView(jpegBytes.buffer, jpegBytes.byteOffset + tagDataPos, 8).getBigUint64(0, true));
+          tagDataPos += 8;
+        }
+        if (localOffset === 0xFFFFFFFF && tagDataPos + 8 <= extraEnd) {
+          localOffset = Number(new DataView(jpegBytes.buffer, jpegBytes.byteOffset + tagDataPos, 8).getBigUint64(0, true));
+          tagDataPos += 8;
+        }
+      }
+      extraPos += 4 + tagSize;
+    }
+
+    // Resolve local header offset (check absolute vs relative)
+    let absLocalOffset = localOffset;
+    if (!(absLocalOffset + 4 <= len &&
+          jpegBytes[absLocalOffset] === 0x50 &&
+          jpegBytes[absLocalOffset+1] === 0x4B &&
+          jpegBytes[absLocalOffset+2] === 0x03 &&
+          jpegBytes[absLocalOffset+3] === 0x04)) {
+      if (zipStartOffset + localOffset + 4 <= len &&
+          jpegBytes[zipStartOffset + localOffset] === 0x50 &&
+          jpegBytes[zipStartOffset + localOffset+1] === 0x4B &&
+          jpegBytes[zipStartOffset + localOffset+2] === 0x03 &&
+          jpegBytes[zipStartOffset + localOffset+3] === 0x04) {
+        absLocalOffset = zipStartOffset + localOffset;
+      }
+    }
+
+    if (absLocalOffset < firstLocalOffset) {
+      firstLocalOffset = absLocalOffset;
+    }
+
+    const lowerFn = fn.toLowerCase();
+    if (lowerFn.endsWith('living.mp4') || (!targetEntry && lowerFn.endsWith('.mp4'))) {
+      targetEntry = {
+        name: fn,
+        compMethod,
+        compSize,
+        uncompSize,
+        absLocalOffset
+      };
+    }
+
+    cdPos += 46 + fnLen + extraLen + commentLen;
+  }
+
+  if (!targetEntry || targetEntry.compMethod !== 0 || targetEntry.compSize === 0) {
+    return null;
+  }
+
+  // 5. Read Local File Header for the video entry
+  const lhOffset = targetEntry.absLocalOffset;
+  if (lhOffset + 30 > len ||
+      jpegBytes[lhOffset] !== 0x50 ||
+      jpegBytes[lhOffset + 1] !== 0x4B ||
+      jpegBytes[lhOffset + 2] !== 0x03 ||
+      jpegBytes[lhOffset + 3] !== 0x04) {
+    return null;
+  }
+
+  const lhView = new DataView(jpegBytes.buffer, jpegBytes.byteOffset + lhOffset, 30);
+  const lhFnLen = lhView.getUint16(26, true);
+  const lhExtraLen = lhView.getUint16(28, true);
+  const videoDataStart = lhOffset + 30 + lhFnLen + lhExtraLen;
+  const videoDataEnd = videoDataStart + targetEntry.compSize;
+
+  if (videoDataEnd > len) return null;
+
+  const videoBytes = jpegBytes.subarray(videoDataStart, videoDataEnd);
+
+  // Validate that video begins with standard MP4 box (ftyp, moov, or mdat)
+  if (videoBytes.length < 8) return null;
+  const boxType = decoder.decode(videoBytes.subarray(4, 8));
+  if (boxType !== 'ftyp' && boxType !== 'moov' && boxType !== 'mdat') {
+    return null;
+  }
+
+  // 6. Locate Still JPEG boundary (ends at EOI before the first ZIP entry)
+  let eoiPos = -1;
+  const scanLimit = (firstLocalOffset !== Infinity && firstLocalOffset < len) ? firstLocalOffset : len;
+  for (let i = scanLimit - 2; i >= 0; i--) {
+    if (jpegBytes[i] === 0xFF && jpegBytes[i+1] === 0xD9) {
+      eoiPos = i + 2;
+      break;
+    }
+  }
+
+  if (eoiPos === -1) return null;
+
+  const stillJpeg = jpegBytes.subarray(0, eoiPos);
+
+  return { stillJpeg, videoBytes };
+}
+
+/**
+ * Converts a Windows 10 Mobile Living Image into a standard Android Motion Photo 1.0.
+ *
+ * @param {Uint8Array} jpegBytes
+ * @returns {Uint8Array} Converted Motion Photo binary buffer.
+ */
+export function convertWin10LivingImage(jpegBytes) {
+  const extracted = extractWin10LivingImage(jpegBytes);
+  if (!extracted) {
+    throw new Error('Not a valid Windows 10 Living Image: missing or unparseable embedded motion video');
+  }
+  return spliceMotionPhoto(extracted.stillJpeg, extracted.videoBytes);
+}
+

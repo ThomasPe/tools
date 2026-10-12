@@ -1,7 +1,9 @@
 // test/test-engine.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createXmpPacket, createApp1XmpSegment, spliceMotionPhoto } from '../src/motion-photo-engine.js';
+import fs from 'node:fs';
+import { createXmpPacket, createApp1XmpSegment, spliceMotionPhoto, extractWin10LivingImage, convertWin10LivingImage } from '../src/motion-photo-engine.js';
+
 
 test('createXmpPacket generates valid XML containing Camera and Container namespaces', () => {
   const xml = createXmpPacket(123456);
@@ -75,4 +77,57 @@ test('spliceMotionPhoto places XMP after existing EXIF APP1 segment', () => {
   const xmpHeader = new TextDecoder().decode(result.subarray(16, 45));
   assert.equal(xmpHeader, 'http://ns.adobe.com/xap/1.0/\0');
 });
+
+test('extractWin10LivingImage returns null on null, non-JPEG, or regular JPEG', () => {
+  assert.equal(extractWin10LivingImage(null), null);
+  assert.equal(extractWin10LivingImage(new Uint8Array(10)), null);
+  assert.equal(extractWin10LivingImage(new Uint8Array([0x00, 0x00])), null);
+
+  // Valid JPEG but no embedded ZIP
+  const regularJpeg = new Uint8Array([0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x04, 0x00, 0x00, 0xFF, 0xD9]);
+  assert.equal(extractWin10LivingImage(regularJpeg), null);
+
+  assert.throws(() => convertWin10LivingImage(regularJpeg), {
+    message: /Not a valid Windows 10 Living Image/
+  });
+});
+
+test('extractWin10LivingImage correctly extracts and converts real Windows 10 Mobile Living Image', () => {
+  const realSamplePath = 'G:\\OneDrive\\Bilder\\2016\\2016-01-23 Ehrwald\\WP_20160123_15_23_26_Pro_LI.jpg';
+  if (!fs.existsSync(realSamplePath)) {
+    // Skip if running in environment where sample path is not mounted
+    return;
+  }
+
+  const rawBytes = fs.readFileSync(realSamplePath);
+  const extracted = extractWin10LivingImage(rawBytes);
+
+  assert.ok(extracted, 'Should successfully extract living image components');
+  assert.equal(extracted.stillJpeg.length, 321742, 'Still JPEG length must match byte 321742');
+  assert.equal(extracted.stillJpeg[0], 0xFF);
+  assert.equal(extracted.stillJpeg[1], 0xD8);
+  assert.equal(extracted.stillJpeg[extracted.stillJpeg.length - 2], 0xFF);
+  assert.equal(extracted.stillJpeg[extracted.stillJpeg.length - 1], 0xD9);
+
+  assert.equal(extracted.videoBytes.length, 1636888, 'Video stream length must match 1636888');
+  const videoBoxType = new TextDecoder().decode(extracted.videoBytes.subarray(4, 8));
+  assert.equal(videoBoxType, 'ftyp', 'Video must start with ftyp box');
+
+  // Test full conversion to Android Motion Photo 1.0
+  const motionPhoto = convertWin10LivingImage(rawBytes);
+  assert.ok(motionPhoto.length > extracted.stillJpeg.length + extracted.videoBytes.length);
+  assert.equal(motionPhoto[0], 0xFF);
+  assert.equal(motionPhoto[1], 0xD8);
+
+  const asString = new TextDecoder('latin1').decode(motionPhoto);
+  assert.ok(asString.includes('<Camera:MotionPhoto>1</Camera:MotionPhoto>'));
+  assert.ok(asString.includes('<GCamera:MicroVideoOffset>1636888</GCamera:MicroVideoOffset>'));
+  assert.ok(asString.includes('<Container:Directory>'));
+
+  // Trailing bytes must equal video stream
+  const trailingBytes = motionPhoto.subarray(motionPhoto.length - extracted.videoBytes.length);
+  assert.equal(Buffer.compare(trailingBytes, extracted.videoBytes), 0);
+});
+
+
 

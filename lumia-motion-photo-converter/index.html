@@ -646,7 +646,7 @@
         </div>
       </div>
       <p class="subtitle">
-        Losslessly convert legacy Nokia Lumia / Windows Phone Living Images into standard Android Motion Photo 1.0 files directly inside your browser. No server uploads, 100% private and offline-capable.
+        Losslessly convert legacy Nokia Lumia / Windows Phone 8.1 &amp; Windows 10 Mobile Living Images into standard Android Motion Photo 1.0 files directly inside your browser. No server uploads, 100% private and offline-capable.
       </p>
       <div class="badge-container">
         <span class="badge badge-client">
@@ -657,7 +657,7 @@
         </span>
         <span class="badge badge-spec">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-            <circle cx="12" cy="12" r="10"></circle>
+            <circle cx="12" cy="10" r="10"></circle>
             <polygon points="10 8 16 12 10 16 10 8" fill="currentColor"></polygon>
           </svg>
           Android Motion Photo 1.0
@@ -709,8 +709,12 @@
           <div class="stat-label">Total Files</div>
         </div>
         <div class="stat-card">
+          <div class="stat-number highlight" id="statWin10Photos">0</div>
+          <div class="stat-label">Win 10 Living</div>
+        </div>
+        <div class="stat-card">
           <div class="stat-number highlight" id="statVideoClips">0</div>
-          <div class="stat-label">Video Clips</div>
+          <div class="stat-label">WP8.1 Clips</div>
         </div>
         <div class="stat-card">
           <div class="stat-number highlight" id="statStdPhotos">0</div>
@@ -911,7 +915,215 @@
     }
 
     /* =========================================================================
-     * 2. Media Pairing Logic
+     * 2. Windows 10 Mobile Living Images Extraction (*_LI.jpg)
+     * ========================================================================= */
+
+    function extractWin10LivingImage(jpegBytes) {
+      if (!jpegBytes || jpegBytes.length < 100) return null;
+      if (jpegBytes[0] !== 0xFF || jpegBytes[1] !== 0xD8) return null;
+
+      const len = jpegBytes.length;
+
+      // 1. Find ZIP EOCD marker (PK\x05\x06) searching backwards from the end
+      let eocdOffset = -1;
+      const minScan = Math.max(0, len - 65557);
+      for (let i = len - 22; i >= minScan; i--) {
+        if (jpegBytes[i] === 0x50 && jpegBytes[i+1] === 0x4B && jpegBytes[i+2] === 0x05 && jpegBytes[i+3] === 0x06) {
+          eocdOffset = i;
+          break;
+        }
+      }
+      if (eocdOffset === -1) return null;
+
+      const eocdView = new DataView(jpegBytes.buffer, jpegBytes.byteOffset + eocdOffset, 22);
+      let cdEntries = eocdView.getUint16(10, true);
+      let cdSize = eocdView.getUint32(12, true);
+      let cdOffset = eocdView.getUint32(16, true);
+
+      // 2. Check for ZIP64 Locator (PK\x06\x07) 20 bytes preceding EOCD
+      if (eocdOffset >= 20 &&
+          jpegBytes[eocdOffset - 20] === 0x50 &&
+          jpegBytes[eocdOffset - 19] === 0x4B &&
+          jpegBytes[eocdOffset - 18] === 0x06 &&
+          jpegBytes[eocdOffset - 17] === 0x07) {
+        const locView = new DataView(jpegBytes.buffer, jpegBytes.byteOffset + eocdOffset - 20, 20);
+        const zip64EocdPos = Number(locView.getBigUint64(8, true));
+        if (zip64EocdPos + 56 <= len &&
+            jpegBytes[zip64EocdPos] === 0x50 &&
+            jpegBytes[zip64EocdPos + 1] === 0x4B &&
+            jpegBytes[zip64EocdPos + 2] === 0x06 &&
+            jpegBytes[zip64EocdPos + 3] === 0x06) {
+          const z64View = new DataView(jpegBytes.buffer, jpegBytes.byteOffset + zip64EocdPos, 56);
+          cdEntries = Number(z64View.getBigUint64(32, true));
+          cdSize = Number(z64View.getBigUint64(40, true));
+          cdOffset = Number(z64View.getBigUint64(48, true));
+        }
+      }
+
+      // 3. Resolve Central Directory start position (handles absolute vs relative polyglot offsets)
+      let cdStart = cdOffset;
+      let isCdValid = (cdStart + 4 <= len &&
+                       jpegBytes[cdStart] === 0x50 &&
+                       jpegBytes[cdStart + 1] === 0x4B &&
+                       jpegBytes[cdStart + 2] === 0x01 &&
+                       jpegBytes[cdStart + 3] === 0x02);
+
+      let zipStartOffset = 0;
+      if (!isCdValid) {
+        zipStartOffset = eocdOffset - cdSize - cdOffset;
+        if (zipStartOffset >= 0 &&
+            zipStartOffset + cdOffset + 4 <= len &&
+            jpegBytes[zipStartOffset + cdOffset] === 0x50 &&
+            jpegBytes[zipStartOffset + cdOffset + 1] === 0x4B &&
+            jpegBytes[zipStartOffset + cdOffset + 2] === 0x01 &&
+            jpegBytes[zipStartOffset + cdOffset + 3] === 0x02) {
+          cdStart = zipStartOffset + cdOffset;
+          isCdValid = true;
+        }
+      }
+
+      if (!isCdValid) return null;
+
+      // 4. Scan Central Directory to find living.mp4
+      let cdPos = cdStart;
+      let targetEntry = null;
+      let firstLocalOffset = Infinity;
+
+      const decoder = new TextDecoder();
+      for (let c = 0; c < cdEntries; c++) {
+        if (cdPos + 46 > len) break;
+        if (jpegBytes[cdPos] !== 0x50 || jpegBytes[cdPos+1] !== 0x4B || jpegBytes[cdPos+2] !== 0x01 || jpegBytes[cdPos+3] !== 0x02) {
+          break;
+        }
+
+        const cdView = new DataView(jpegBytes.buffer, jpegBytes.byteOffset + cdPos, 46);
+        let compMethod = cdView.getUint16(10, true);
+        let compSize = cdView.getUint32(20, true);
+        let uncompSize = cdView.getUint32(24, true);
+        let fnLen = cdView.getUint16(28, true);
+        let extraLen = cdView.getUint16(30, true);
+        let commentLen = cdView.getUint16(32, true);
+        let localOffset = cdView.getUint32(42, true);
+
+        const fn = decoder.decode(jpegBytes.subarray(cdPos + 46, cdPos + 46 + fnLen));
+
+        // Check for ZIP64 extra fields (Tag 0x0001)
+        let extraPos = cdPos + 46 + fnLen;
+        const extraEnd = extraPos + extraLen;
+        while (extraPos + 4 <= extraEnd) {
+          const extraView = new DataView(jpegBytes.buffer, jpegBytes.byteOffset + extraPos, 4);
+          const tag = extraView.getUint16(0, true);
+          const tagSize = extraView.getUint16(2, true);
+          let tagDataPos = extraPos + 4;
+          if (tag === 0x0001) {
+            if (uncompSize === 0xFFFFFFFF && tagDataPos + 8 <= extraEnd) {
+              uncompSize = Number(new DataView(jpegBytes.buffer, jpegBytes.byteOffset + tagDataPos, 8).getBigUint64(0, true));
+              tagDataPos += 8;
+            }
+            if (compSize === 0xFFFFFFFF && tagDataPos + 8 <= extraEnd) {
+              compSize = Number(new DataView(jpegBytes.buffer, jpegBytes.byteOffset + tagDataPos, 8).getBigUint64(0, true));
+              tagDataPos += 8;
+            }
+            if (localOffset === 0xFFFFFFFF && tagDataPos + 8 <= extraEnd) {
+              localOffset = Number(new DataView(jpegBytes.buffer, jpegBytes.byteOffset + tagDataPos, 8).getBigUint64(0, true));
+              tagDataPos += 8;
+            }
+          }
+          extraPos += 4 + tagSize;
+        }
+
+        // Resolve local header offset (check absolute vs relative)
+        let absLocalOffset = localOffset;
+        if (!(absLocalOffset + 4 <= len &&
+              jpegBytes[absLocalOffset] === 0x50 &&
+              jpegBytes[absLocalOffset+1] === 0x4B &&
+              jpegBytes[absLocalOffset+2] === 0x03 &&
+              jpegBytes[absLocalOffset+3] === 0x04)) {
+          if (zipStartOffset + localOffset + 4 <= len &&
+              jpegBytes[zipStartOffset + localOffset] === 0x50 &&
+              jpegBytes[zipStartOffset + localOffset+1] === 0x4B &&
+              jpegBytes[zipStartOffset + localOffset+2] === 0x03 &&
+              jpegBytes[zipStartOffset + localOffset+3] === 0x04) {
+            absLocalOffset = zipStartOffset + localOffset;
+          }
+        }
+
+        if (absLocalOffset < firstLocalOffset) {
+          firstLocalOffset = absLocalOffset;
+        }
+
+        const lowerFn = fn.toLowerCase();
+        if (lowerFn.endsWith('living.mp4') || (!targetEntry && lowerFn.endsWith('.mp4'))) {
+          targetEntry = {
+            name: fn,
+            compMethod,
+            compSize,
+            uncompSize,
+            absLocalOffset
+          };
+        }
+
+        cdPos += 46 + fnLen + extraLen + commentLen;
+      }
+
+      if (!targetEntry || targetEntry.compMethod !== 0 || targetEntry.compSize === 0) {
+        return null;
+      }
+
+      // 5. Read Local File Header for the video entry
+      const lhOffset = targetEntry.absLocalOffset;
+      if (lhOffset + 30 > len ||
+          jpegBytes[lhOffset] !== 0x50 ||
+          jpegBytes[lhOffset + 1] !== 0x4B ||
+          jpegBytes[lhOffset + 2] !== 0x03 ||
+          jpegBytes[lhOffset + 3] !== 0x04) {
+        return null;
+      }
+
+      const lhView = new DataView(jpegBytes.buffer, jpegBytes.byteOffset + lhOffset, 30);
+      const lhFnLen = lhView.getUint16(26, true);
+      const lhExtraLen = lhView.getUint16(28, true);
+      const videoDataStart = lhOffset + 30 + lhFnLen + lhExtraLen;
+      const videoDataEnd = videoDataStart + targetEntry.compSize;
+
+      if (videoDataEnd > len) return null;
+
+      const videoBytes = jpegBytes.subarray(videoDataStart, videoDataEnd);
+
+      // Validate that video begins with standard MP4 box (ftyp, moov, or mdat)
+      if (videoBytes.length < 8) return null;
+      const boxType = decoder.decode(videoBytes.subarray(4, 8));
+      if (boxType !== 'ftyp' && boxType !== 'moov' && boxType !== 'mdat') {
+        return null;
+      }
+
+      // 6. Locate Still JPEG boundary (ends at EOI before the first ZIP entry)
+      let eoiPos = -1;
+      const scanLimit = (firstLocalOffset !== Infinity && firstLocalOffset < len) ? firstLocalOffset : len;
+      for (let i = scanLimit - 2; i >= 0; i--) {
+        if (jpegBytes[i] === 0xFF && jpegBytes[i+1] === 0xD9) {
+          eoiPos = i + 2;
+          break;
+        }
+      }
+
+      if (eoiPos === -1) return null;
+
+      const stillJpeg = jpegBytes.subarray(0, eoiPos);
+
+      return { stillJpeg, videoBytes };
+    }
+
+    function convertWin10LivingImage(jpegBytes) {
+      const extracted = extractWin10LivingImage(jpegBytes);
+      if (!extracted) {
+        throw new Error('Not a valid Windows 10 Living Image: missing or unparseable embedded motion video');
+      }
+      return spliceMotionPhoto(extracted.stillJpeg, extracted.videoBytes);
+    }
+
+    /* =========================================================================
+     * 3. Media Pairing Logic (Windows Phone 8.1 & Windows 10 Mobile)
      * ========================================================================= */
 
     function parseBaseName(filename) {
@@ -920,25 +1132,33 @@
       // Video snippet: e.g. WP_..._Pro.mp4.thm or WP_..._Pro.mp4
       if (lower.endsWith('.mp4.thm')) {
         const base = filename.slice(0, -'.mp4.thm'.length);
-        return { base, isVideo: true, isHighRes: false, isStandardJpg: false };
+        return { base, isVideo: true, isHighRes: false, isStandardJpg: false, isWin10LivingImage: false };
       }
       if (lower.endsWith('.mp4') && !lower.includes('storyteller')) {
         const base = filename.slice(0, -'.mp4'.length);
-        return { base, isVideo: true, isHighRes: false, isStandardJpg: false };
+        return { base, isVideo: true, isHighRes: false, isStandardJpg: false, isWin10LivingImage: false };
+      }
+
+      // Windows 10 Mobile Living Image: e.g. WP_..._Pro_LI.jpg or WP_..._Rich_LI.jpg
+      if (lower.endsWith('_li.jpg') || lower.endsWith('_li.jpeg')) {
+        const ext = lower.endsWith('.jpeg') ? '.jpeg' : '.jpg';
+        const base = filename.slice(0, -(ext.length + '_li'.length));
+        const isHighRes = lower.includes('__highres') || lower.includes('_highres');
+        return { base, isVideo: false, isHighRes, isStandardJpg: false, isWin10LivingImage: true };
       }
 
       // High-res photo: e.g. WP_..._Pro__highres.jpg
       if (lower.endsWith('__highres.jpg') || lower.endsWith('__highres.jpeg')) {
         const ext = lower.endsWith('.jpeg') ? '.jpeg' : '.jpg';
         const base = filename.slice(0, -(ext.length + '__highres'.length));
-        return { base, isVideo: false, isHighRes: true, isStandardJpg: false };
+        return { base, isVideo: false, isHighRes: true, isStandardJpg: false, isWin10LivingImage: false };
       }
 
       // Standard photo: e.g. WP_..._Pro.jpg
       if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) {
         const ext = lower.endsWith('.jpeg') ? '.jpeg' : '.jpg';
         const base = filename.slice(0, -ext.length);
-        return { base, isVideo: false, isHighRes: false, isStandardJpg: true };
+        return { base, isVideo: false, isHighRes: false, isStandardJpg: true, isWin10LivingImage: false };
       }
 
       return null;
@@ -948,12 +1168,19 @@
       const videosByBase = new Map();
       const stdPhotosByBase = new Map();
       const highResPhotosByBase = new Map();
+      const win10Images = [];
       const allNames = new Set(files.map(f => f.name));
 
       for (const item of files) {
         const info = parseBaseName(item.name);
         if (!info) continue;
-        if (info.isVideo) {
+        if (info.isWin10LivingImage) {
+          win10Images.push({
+            photoFile: item,
+            outName: item.name,
+            isHighRes: info.isHighRes
+          });
+        } else if (info.isVideo) {
           const existing = videosByBase.get(info.base);
           if (!existing || (!existing.name.toLowerCase().endsWith('.mp4.thm') && item.name.toLowerCase().endsWith('.mp4.thm'))) {
             videosByBase.set(info.base, item);
@@ -967,6 +1194,9 @@
 
       const pairs = [];
       const matchedPhotos = new Set();
+      for (const w of win10Images) {
+        matchedPhotos.add(w.outName);
+      }
 
       for (const [base, videoItem] of videosByBase.entries()) {
         const targetPhotos = [];
@@ -1006,7 +1236,7 @@
         }
       }
 
-      return { pairs, orphans };
+      return { pairs, win10Images, orphans };
     }
 
     // Expose engine to window for debugging or verification
@@ -1014,9 +1244,12 @@
       createXmpPacket,
       createApp1XmpSegment,
       spliceMotionPhoto,
+      extractWin10LivingImage,
+      convertWin10LivingImage,
       parseBaseName,
       matchMediaPairs
     };
+
 
     /* =========================================================================
      * 3. UI Controller & Application State
@@ -1053,6 +1286,7 @@
 
     // Stat counters
     const statTotalFiles = document.getElementById('statTotalFiles');
+    const statWin10Photos = document.getElementById('statWin10Photos');
     const statVideoClips = document.getElementById('statVideoClips');
     const statStdPhotos = document.getElementById('statStdPhotos');
     const statHighResPhotos = document.getElementById('statHighResPhotos');
@@ -1103,29 +1337,37 @@
           else stdCount++;
         }
       }
+      const win10Count = scan.win10Images ? scan.win10Images.length : 0;
 
       statTotalFiles.textContent = files.length;
+      if (statWin10Photos) statWin10Photos.textContent = win10Count;
       statVideoClips.textContent = scan.pairs.length;
       statStdPhotos.textContent = stdCount;
       statHighResPhotos.textContent = highResCount;
       statOrphans.textContent = scan.orphans.length;
 
-      const totalToConvert = stdCount + highResCount;
+      const totalToConvert = stdCount + highResCount + win10Count;
 
       if (totalToConvert > 0) {
         btnConvert.disabled = false;
         modePill.textContent = 'READY';
         modePill.style.background = 'var(--accent)';
+
+        const parts = [];
+        if (win10Count > 0) parts.push(`${win10Count} Win10`);
+        if (stdCount + highResCount > 0) parts.push(`${stdCount + highResCount} WP8.1`);
+        const desc = parts.join(' + ');
+
         if (currentDirectoryHandle) {
-          statusMessage.innerHTML = `Found <strong>${totalToConvert}</strong> motion photo pairs. Ready to auto-save into <code>converted_motion_photos/</code>.`;
+          statusMessage.innerHTML = `Found <strong>${totalToConvert}</strong> motion photos (${desc}). Ready to auto-save into <code>converted_motion_photos/</code>.`;
         } else {
-          statusMessage.innerHTML = `Found <strong>${totalToConvert}</strong> motion photo pairs. Direct download mode ready.`;
+          statusMessage.innerHTML = `Found <strong>${totalToConvert}</strong> motion photos (${desc}). Direct download mode ready.`;
         }
       } else {
         btnConvert.disabled = true;
-        modePill.textContent = 'NO PAIRS';
+        modePill.textContent = 'NO LIVING IMAGES';
         modePill.style.background = 'var(--warning)';
-        statusMessage.textContent = 'Scanned files, but found no matching (JPEG + MP4.thm) pairs.';
+        statusMessage.textContent = 'Scanned files, but found no matching WP8.1 pairs (.mp4.thm) or Win10 Living Images (_LI.jpg).';
       }
     }
 
@@ -1137,16 +1379,18 @@
       mediaPairsResult = matchMediaPairs(filesList);
       updateStatsUI(filesList, mediaPairsResult);
 
-      let totalTargets = 0;
+      const win10Count = mediaPairsResult.win10Images ? mediaPairsResult.win10Images.length : 0;
+      let totalTargets = win10Count;
       for (const p of mediaPairsResult.pairs) totalTargets += p.targetPhotos.length;
 
-      log(`Scan complete: ${mediaPairsResult.pairs.length} video snippets matched with ${totalTargets} photos (${mediaPairsResult.orphans.length} static photos / orphans).`, 'success');
+      log(`Scan complete: ${win10Count} Win10 Living Images, ${mediaPairsResult.pairs.length} WP8.1 clips paired with ${totalTargets - win10Count} photos (${mediaPairsResult.orphans.length} static photos / orphans).`, 'success');
       if (currentDirectoryHandle) {
         log(`Direct stream mode active: output destination is "${currentDirectoryHandle.name}/converted_motion_photos"`, 'info');
       } else {
         log(`Download mode active: converted files will be downloaded directly.`, 'info');
       }
     }
+
 
     /* =========================================================================
      * 4. Directory & File Selection Handlers
@@ -1347,7 +1591,9 @@
     });
 
     btnConvert.addEventListener('click', async () => {
-      if (isConverting || !mediaPairsResult || mediaPairsResult.pairs.length === 0) return;
+      const win10List = mediaPairsResult && mediaPairsResult.win10Images ? mediaPairsResult.win10Images : [];
+      const wp8Pairs = mediaPairsResult && mediaPairsResult.pairs ? mediaPairsResult.pairs : [];
+      if (isConverting || (win10List.length === 0 && wp8Pairs.length === 0)) return;
 
       isConverting = true;
       btnConvert.disabled = true;
@@ -1363,8 +1609,8 @@
         progressBarFill.style.width = '0%';
         progressPercentText.textContent = '0%';
 
-        let totalTasks = 0;
-        for (const p of mediaPairsResult.pairs) totalTasks += p.targetPhotos.length;
+        let totalTasks = win10List.length;
+        for (const p of wp8Pairs) totalTasks += p.targetPhotos.length;
 
         let completedTasks = 0;
         let errorTasks = 0;
@@ -1383,8 +1629,47 @@
           }
         }
 
-        for (let i = 0; i < mediaPairsResult.pairs.length; i++) {
-          const pair = mediaPairsResult.pairs[i];
+        // 1. Process Windows 10 Mobile Living Images (embedded ZIP)
+        for (const item of win10List) {
+          const outName = item.outName;
+          progressStatusText.textContent = `Converting ${outName}... (${completedTasks + 1} of ${totalTasks})`;
+
+          try {
+            const pFile = item.photoFile.file || (await item.photoFile.handle.getFile());
+            const pBuf = await pFile.arrayBuffer();
+            const rawBytes = new Uint8Array(pBuf);
+
+            const motionPhotoBytes = convertWin10LivingImage(rawBytes);
+
+            if (outputDirHandle) {
+              const outFileHandle = await outputDirHandle.getFileHandle(outName, { create: true });
+              const writable = await outFileHandle.createWritable();
+              await writable.write(motionPhotoBytes);
+              await writable.close();
+            } else {
+              const blob = new Blob([motionPhotoBytes], { type: 'image/jpeg' });
+              addDownloadEntry(blob, outName, motionPhotoBytes.length);
+              triggerDownload(blob, outName);
+              await new Promise(r => setTimeout(r, 200));
+            }
+
+            completedTasks++;
+            log(`Converted: ${outName} (${formatBytes(motionPhotoBytes.length)}) [Win 10 Mobile Living Image]`, 'success');
+          } catch (err) {
+            errorTasks++;
+            log(`Error converting "${outName}": ${err.message}`, 'error');
+          }
+
+          const currentPct = Math.round(((completedTasks + errorTasks) / totalTasks) * 100);
+          progressBarFill.style.width = `${currentPct}%`;
+          progressPercentText.textContent = `${currentPct}% (${completedTasks + errorTasks} / ${totalTasks})`;
+          await new Promise(r => setTimeout(r, 10));
+        }
+
+        // 2. Process WP8.1 Pairs (.mp4.thm + .jpg)
+        for (let i = 0; i < wp8Pairs.length; i++) {
+          const pair = wp8Pairs[i];
+
 
           // 1. Read Video Bytes
           let videoBytes;

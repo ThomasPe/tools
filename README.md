@@ -16,13 +16,15 @@
 ### 1. Lumia Living Images &rarr; Google Motion Photos Converter
 * **URL:** [https://tools.pentenrieder.dev/lumia-motion-photo-converter/](https://tools.pentenrieder.dev/lumia-motion-photo-converter/)
 * **Directory:** [`lumia-motion-photo-converter/`](lumia-motion-photo-converter/)
-* **Description:** Transforms legacy Windows Phone / Nokia Lumia "Living Images" (`.jpg` + `.mp4.thm`) into modern **Android Motion Photo 1.0** single-file images &mdash; fully compatible with **Google Pixel, Google Photos, Samsung Gallery, and Windows 11 Photos**.
+* **Description:** Transforms legacy Windows Phone 8.1 / Nokia Lumia pairs (`.jpg` + `.mp4.thm`) and Windows 10 Mobile embedded Living Images (`*_LI.jpg`) into modern **Android Motion Photo 1.0** single-file images &mdash; fully compatible with **Google Pixel, Google Photos, Samsung Gallery, and Windows 11 Photos**.
 * **Key Capabilities:**
+  * **Windows Phone 8.1:** Automatically matches and pairs `.mp4.thm` video sidecars with 5MP oversampled (`_Pro.jpg`) and PureView sensor (`__highres.jpg`) photos.
+  * **Windows 10 Mobile:** Unpacks embedded uncompressed ZIP archives (`formats/living/living.mp4` stored with compression method 0) directly from `*_LI.jpg` / `*_Rich_LI.jpg` single files with zero external libraries.
   * Slices and injects standardized XMP APP1 container metadata (`Camera:MotionPhoto` and `Container:Directory`).
   * Appends the trailing video stream after the JPEG `FF D9` marker.
   * Preserves 100% camera EXIF data byte-for-byte.
-  * Pairs both 5MP oversampled (`_Pro.jpg`) and PureView sensor (`__highres.jpg`) versions.
   * Leverages File System Access API (`showDirectoryPicker`) for direct folder-to-folder streaming.
+
 
 ---
 
