@@ -5,11 +5,12 @@ import test from 'node:test';
 test('converter.html structure and integrity', () => {
   const html = fs.readFileSync('converter.html', 'utf8');
 
-  // Verify self-contained requirement (no CDN or external scripts/css)
-  assert.ok(!html.includes('https://'), 'HTML should have no external https URLs (zero CDN dependencies)');
-  assert.ok(!html.includes('http://') || html.includes('http://ns.adobe.com/xap/1.0/'), 'HTML should have no external HTTP requests except XMP schema namespaces');
-  assert.ok(!html.includes('<script src='), 'HTML should have no external scripts');
-  assert.ok(!html.includes('<link rel="stylesheet" href='), 'HTML should have no external stylesheets');
+  // Verify self-contained requirement (zero CDN dependencies; only privacy-friendly Plausible analytics allowed)
+  const scriptSrcs = [...html.matchAll(/<script[^>]+src=["']([^"']+)["']/g)].map(m => m[1]);
+  for (const src of scriptSrcs) {
+    assert.ok(src.includes('plausible.io'), `External scripts only allowed for privacy-friendly Plausible analytics, found: ${src}`);
+  }
+  assert.ok(!html.includes('<link rel="stylesheet" href="http'), 'HTML should have no external stylesheets');
 
   // Verify badges
   assert.ok(html.includes('100% Client-Side'), 'Contains 100% Client-Side badge');
@@ -46,9 +47,10 @@ test('converter.html structure and integrity', () => {
 
 test('converter.html embedded engine functionality', () => {
   const html = fs.readFileSync('converter.html', 'utf8');
-  const scriptMatch = html.match(/<script>([\s\S]*?)<\/script>/);
-  assert.ok(scriptMatch, 'Should contain script tag');
-  const scriptContent = scriptMatch[1];
+  const allScripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)];
+  const engineScript = allScripts.find(m => m[1].includes('MotionPhotoEngine'));
+  assert.ok(engineScript, 'Should contain engine script tag');
+  const scriptContent = engineScript[1];
 
   // Mock DOM environment to evaluate the engine functions
   const mockGlobal = {
@@ -118,12 +120,41 @@ test('converter.html embedded engine functionality', () => {
 test('root index.html (Tools Hub) integrity and navigation', () => {
   const hubHtml = fs.readFileSync('index.html', 'utf8');
 
-  // Verify link to lumia tool
+  // Verify link to lumia tool, privacy, and impressum
   assert.ok(hubHtml.includes('lumia-motion-photo-converter'), 'Hub contains link to lumia-motion-photo-converter');
   assert.ok(hubHtml.includes('In-Browser Web Tools'), 'Hub contains main heading');
   assert.ok(hubHtml.includes('pentenrieder.dev'), 'Hub contains pentenrieder.dev branding');
+  assert.ok(hubHtml.includes('privacy/'), 'Hub contains link to privacy policy');
+  assert.ok(hubHtml.includes('impressum/'), 'Hub contains link to impressum');
 
-  // Verify zero external scripts/styles
-  assert.ok(!hubHtml.includes('<script src='), 'Hub has no external scripts');
-  assert.ok(!hubHtml.includes('<link rel="stylesheet" href='), 'Hub has no external stylesheets');
+  // Verify zero external scripts/styles except privacy-friendly Plausible analytics
+  const scriptSrcs = [...hubHtml.matchAll(/<script[^>]+src=["']([^"']+)["']/g)].map(m => m[1]);
+  for (const src of scriptSrcs) {
+    assert.ok(src.includes('plausible.io'), `Hub external scripts only allowed for Plausible, found: ${src}`);
+  }
+  assert.ok(!hubHtml.includes('<link rel="stylesheet" href="http'), 'Hub has no external stylesheets');
+});
+
+test('impressum and privacy pages exist and exclude medienstudio', () => {
+  assert.ok(fs.existsSync('impressum/index.html'), 'impressum/index.html must exist');
+  assert.ok(fs.existsSync('impressum.html'), 'impressum.html must exist');
+  assert.ok(fs.existsSync('privacy/index.html'), 'privacy/index.html must exist');
+  assert.ok(fs.existsSync('privacy.html'), 'privacy.html must exist');
+
+  const impressumHtml = fs.readFileSync('impressum/index.html', 'utf8');
+  assert.ok(impressumHtml.includes('Angaben gemäß § 5 TMG'), 'Impressum contains § 5 TMG');
+  assert.ok(impressumHtml.includes('Thomas Pentenrieder'), 'Impressum contains Thomas Pentenrieder');
+  assert.ok(impressumHtml.includes('Kastanienweg 3a'), 'Impressum contains address');
+  assert.ok(impressumHtml.includes('82319 Starnberg'), 'Impressum contains city');
+  assert.ok(impressumHtml.includes('plausible.io'), 'Impressum contains Plausible script');
+  assert.ok(!impressumHtml.toLowerCase().includes('medienstudio'), 'Impressum MUST NOT contain medienstudio');
+
+  const privacyHtml = fs.readFileSync('privacy/index.html', 'utf8');
+  assert.ok(privacyHtml.includes('Datenschutzerklärung'), 'Privacy contains title');
+  assert.ok(privacyHtml.includes('Plausible Analytics'), 'Privacy contains Plausible Analytics disclosure');
+  assert.ok(privacyHtml.includes('100% Client-Side'), 'Privacy highlights 100% client-side privacy');
+  assert.ok(privacyHtml.includes('GitHub Pages'), 'Privacy documents GitHub Pages hosting');
+  assert.ok(privacyHtml.includes('Thomas Pentenrieder'), 'Privacy contains responsible person');
+  assert.ok(privacyHtml.includes('plausible.io'), 'Privacy contains Plausible script');
+  assert.ok(!privacyHtml.toLowerCase().includes('medienstudio'), 'Privacy page MUST NOT contain medienstudio');
 });

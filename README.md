@@ -35,6 +35,10 @@ tools/
 ├── index.html                         # Tools Hub portal homepage
 ├── lumia-motion-photo-converter/      # Tool 1: Lumia converter web app
 │   └── index.html
+├── privacy/                           # Privacy policy (Datenschutzerklärung)
+│   └── index.html
+├── impressum/                         # Legal imprint (§ 5 TMG)
+│   └── index.html
 ├── src/                               # Shared / modular engine logic
 │   ├── motion-photo-engine.js
 │   └── file-matcher.js

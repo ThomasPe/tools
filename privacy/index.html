@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Datenschutzerklärung | tools.pentenrieder.dev</title>
+  <meta name="description" content="Datenschutzerklärung (Privacy Policy) für tools.pentenrieder.dev">
+
+  <!-- Privacy-friendly analytics by Plausible -->
+  <script async src="https://plausible.io/js/pa-wZVsiK0BBSk3fzI7qsbWN.js"></script>
+  <script>
+    window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)},plausible.init=plausible.init||function(i){plausible.o=i||{}};
+    plausible.init()
+  </script>
+
+  <style>
+    :root {
+      --bg-gradient: linear-gradient(135deg, #0b0f19 0%, #111827 50%, #0f172a 100%);
+      --surface: #1e293b;
+      --surface-card: rgba(30, 41, 59, 0.75);
+      --surface-hover: rgba(51, 65, 85, 0.9);
+      --border: rgba(255, 255, 255, 0.1);
+      --border-accent: rgba(56, 189, 248, 0.4);
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --accent: #38bdf8;
+      --accent-hover: #0ea5e9;
+      --success: #10b981;
+      --shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+      --radius: 16px;
+    }
+
+    @media (prefers-color-scheme: light) {
+      :root:not([data-theme="dark"]) {
+        --bg-gradient: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 50%, #e2e8f0 100%);
+        --surface: #ffffff;
+        --surface-card: rgba(255, 255, 255, 0.9);
+        --surface-hover: #f1f5f9;
+        --border: rgba(0, 0, 0, 0.08);
+        --border-accent: rgba(2, 132, 199, 0.4);
+        --text-main: #0f172a;
+        --text-muted: #64748b;
+        --accent: #0284c7;
+        --accent-hover: #0369a1;
+        --shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.04);
+      }
+    }
+
+    [data-theme="light"] {
+      --bg-gradient: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 50%, #e2e8f0 100%);
+      --surface: #ffffff;
+      --surface-card: rgba(255, 255, 255, 0.9);
+      --surface-hover: #f1f5f9;
+      --border: rgba(0, 0, 0, 0.08);
+      --border-accent: rgba(2, 132, 199, 0.4);
+      --text-main: #0f172a;
+      --text-muted: #64748b;
+      --accent: #0284c7;
+      --accent-hover: #0369a1;
+      --shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.04);
+    }
+
+    [data-theme="dark"] {
+      --bg-gradient: linear-gradient(135deg, #0b0f19 0%, #111827 50%, #0f172a 100%);
+      --surface: #1e293b;
+      --surface-card: rgba(30, 41, 59, 0.75);
+      --surface-hover: rgba(51, 65, 85, 0.9);
+      --border: rgba(255, 255, 255, 0.1);
+      --border-accent: rgba(56, 189, 248, 0.4);
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --accent: #38bdf8;
+      --accent-hover: #0ea5e9;
+      --shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background: var(--bg-gradient);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      padding: 32px 20px;
+      line-height: 1.6;
+    }
+
+    .container {
+      max-width: 820px;
+      margin: 0 auto;
+      width: 100%;
+      flex: 1;
+    }
+
+    .top-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 36px;
+    }
+
+    .brand {
+      font-weight: 700;
+      font-size: 16px;
+      color: var(--text-main);
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .brand-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 10px var(--accent);
+    }
+
+    .nav-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .back-btn, .theme-btn {
+      background: var(--surface-card);
+      border: 1px solid var(--border);
+      color: var(--text-main);
+      border-radius: 20px;
+      padding: 6px 14px;
+      font-size: 13px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      text-decoration: none;
+      backdrop-filter: blur(8px);
+      transition: all 0.2s ease;
+    }
+
+    .back-btn:hover, .theme-btn:hover {
+      background: var(--surface-hover);
+      border-color: var(--border-accent);
+      color: var(--accent);
+    }
+
+    .legal-card {
+      background: var(--surface-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 36px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(12px);
+      margin-bottom: 40px;
+    }
+
+    h1 {
+      font-size: 32px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin-bottom: 20px;
+      background: linear-gradient(135deg, var(--text-main) 40%, var(--accent) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    h2 {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--accent);
+      margin-top: 32px;
+      margin-bottom: 12px;
+      letter-spacing: -0.01em;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 6px;
+    }
+
+    h3 {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text-main);
+      margin-top: 20px;
+      margin-bottom: 8px;
+    }
+
+    p {
+      color: var(--text-main);
+      margin-bottom: 14px;
+      font-size: 15px;
+    }
+
+    ul {
+      margin-left: 20px;
+      margin-bottom: 16px;
+      color: var(--text-main);
+      font-size: 15px;
+    }
+
+    li {
+      margin-bottom: 6px;
+    }
+
+    a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    .highlight-box {
+      background: rgba(56, 189, 248, 0.08);
+      border: 1px solid var(--border-accent);
+      border-radius: 12px;
+      padding: 16px 20px;
+      margin: 20px 0;
+    }
+
+    .highlight-box strong {
+      color: var(--accent);
+    }
+
+    footer {
+      text-align: center;
+      font-size: 13px;
+      color: var(--text-muted);
+      padding: 24px 0 12px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .footer-links {
+      display: flex;
+      gap: 16px;
+    }
+
+    .footer-links a {
+      color: var(--text-muted);
+      text-decoration: none;
+      transition: color 0.2s ease;
+    }
+
+    .footer-links a:hover {
+      color: var(--accent);
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <div class="top-bar">
+      <a href="../" class="brand">
+        <span class="brand-dot"></span>
+        tools.pentenrieder.dev
+      </a>
+      <div class="nav-actions">
+        <a href="../" class="back-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="19" y1="12" x2="5" y2="12"></line>
+            <polyline points="12 19 5 12 12 5"></polyline>
+          </svg>
+          Zurück zur Übersicht
+        </a>
+        <button class="theme-btn" id="themeToggleBtn" title="Toggle Light/Dark Theme">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="5"></circle>
+            <line x1="12" y1="12" x2="12" y2="3"></line>
+            <line x1="12" y1="21" x2="12" y2="23"></line>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+            <line x1="1" y1="12" x2="3" y2="12"></line>
+            <line x1="21" y1="12" x2="23" y2="12"></line>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+          </svg>
+          <span id="themeToggleText">Theme</span>
+        </button>
+      </div>
+    </div>
+
+    <main class="legal-card">
+      <h1>Datenschutzerklärung</h1>
+
+      <p>
+        Diese Datenschutzerklärung klärt Sie über die Art, den Umfang und Zweck der Verarbeitung von personenbezogenen Daten innerhalb unseres Onlineangebotes auf <strong>tools.pentenrieder.dev</strong> auf.
+      </p>
+
+      <div class="highlight-box">
+        <strong>100% Client-Side Privacy:</strong> Alle auf dieser Website bereitgestellten Werkzeuge (wie der Living Images Motion Photo Converter) verarbeiten ausgewählte Bild- und Mediendateien ausschließlich <em>lokal direkt in Ihrem Webbrowser</em>. Ihre Fotos, Videos und Dokumente werden zu keinem Zeitpunkt auf Server übertragen, hochgeladen oder zwischengespeichert.
+      </div>
+
+      <h2>1. Verantwortlicher</h2>
+      <p>
+        Verantwortlicher im Sinne der Datenschutz-Grundverordnung (DSGVO) und anderer nationaler Datenschutzgesetze ist:
+      </p>
+      <p>
+        <strong>Thomas Pentenrieder</strong><br>
+        Kastanienweg 3a<br>
+        82319 Starnberg<br>
+        Deutschland<br>
+        Telefon: +49 175 9689964<br>
+        E-Mail: <a href="mailto:pentenrieder@outlook.com">pentenrieder@outlook.com</a><br>
+        Web: <a href="https://tools.pentenrieder.dev">https://tools.pentenrieder.dev</a>
+      </p>
+
+      <h2>2. Bereitstellung der Website und Server-Logfiles (Hosting)</h2>
+      <p>
+        Diese Website wird als statisches Webangebot über <strong>GitHub Pages</strong> bereitgestellt (Dienstanbieter: GitHub Inc., 88 Colin P Kelly Jr St, San Francisco, CA 94107, USA, ein Tochterunternehmen der Microsoft Corporation).
+      </p>
+      <p>
+        Beim Aufrufen unserer Webseiten erfasst der Hostinganbieter automatisch Informationen in sogenannten Server-Log-Dateien, die Ihr Browser automatisch übermittelt. Dies umfasst:
+      </p>
+      <ul>
+        <li>Browsertyp und Browserversion</li>
+        <li>Verwendetes Betriebssystem</li>
+        <li>Referrer URL (die zuvor besuchte Seite)</li>
+        <li>Hostname des zugreifenden Rechners / IP-Adresse</li>
+        <li>Uhrzeit und Datum der Serveranfrage</li>
+      </ul>
+      <p>
+        Die Rechtsgrundlage für diese Datenverarbeitung ist Art. 6 Abs. 1 lit. f DSGVO. Unser berechtigtes Interesse liegt in der technisch einwandfreien, stabilen und sicheren Bereitstellung unseres Onlineangebots.
+      </p>
+
+      <h2>3. Webanalyse mit Plausible Analytics</h2>
+      <p>
+        Zur statistischen Auswertung von Besucherzugriffen nutzen wir die datenschutzfreundliche Open-Source-Webanalyselösung <strong>Plausible Analytics</strong> (Anbieter: Plausible Insights OÜ, Västriku tn 2, 50403 Tartu, Estland).
+      </p>
+      <p>
+        Plausible ist so konzipiert, dass die Privatsphäre der Besucher gewahrt bleibt:
+      </p>
+      <ul>
+        <li><strong>Keine Cookies:</strong> Plausible verwendet weder Cookies noch andere Technologien zur persistenten Wiedererkennung von Geräten.</li>
+        <li><strong>Keine personenbezogenen Daten:</strong> Es werden keine personenbezogenen Daten (wie Klarnamen oder exakte IP-Adressen) dauerhaft gespeichert. Die IP-Adresse des Nutzers wird unmittelbar zusammen mit einem täglich wechselnden Zufallswert gehasht, sodass eine Rückverfolgung oder Bildung von Nutzerprofilen über Webseiten oder Tage hinweg technisch ausgeschlossen ist.</li>
+        <li><strong>Kein Cross-Site-Tracking:</strong> Besuche werden ausschließlich aggregiert gemessen, um zu verstehen, welche Tools genutzt werden und wie die Seite optimiert werden kann.</li>
+      </ul>
+      <p>
+        Die Rechtsgrundlage für die Nutzung von Plausible Analytics ist unser berechtigtes Interesse an der bedarfsgerechten Gestaltung und kontinuierlichen Verbesserung unserer Web-Tools gemäß Art. 6 Abs. 1 lit. f DSGVO. Weitere Details zum Datenschutz von Plausible finden Sie unter <a href="https://plausible.io/data-policy" target="_blank" rel="noopener">https://plausible.io/data-policy</a>.
+      </p>
+
+      <h2>4. Lokale Speicherung im Browser (LocalStorage)</h2>
+      <p>
+        Diese Website verwendet <code>localStorage</code> ausschließlich, um Ihre gewählte Darstellungseinstellung (Hell-/Dunkelmodus) auf Ihrem eigenen Endgerät zu speichern, damit diese bei einem erneuten Besuch erhalten bleibt.
+      </p>
+      <p>
+        Diese Daten verbleiben lokal auf Ihrem Endgerät und werden zu keinem Zeitpunkt an unsere oder fremde Server übertragen. Sie können den lokalen Speicher jederzeit über die Einstellungen Ihres Browsers leeren.
+      </p>
+
+      <h2>5. Rechte der betroffenen Personen</h2>
+      <p>
+        Nach der Datenschutz-Grundverordnung stehen Ihnen als betroffene Person folgende Rechte zu:
+      </p>
+      <ul>
+        <li><strong>Auskunftsrecht (Art. 15 DSGVO):</strong> Sie haben das Recht, Auskunft über Ihre von uns verarbeiteten personenbezogenen Daten zu verlangen.</li>
+        <li><strong>Recht auf Berichtigung (Art. 16 DSGVO):</strong> Sie haben das Recht, unverzüglich die Berichtigung unrichtiger oder Vervollständigung Ihrer bei uns gespeicherten personenbezogenen Daten zu verlangen.</li>
+        <li><strong>Recht auf Löschung (Art. 17 DSGVO):</strong> Sie haben das Recht, die Löschung Ihrer bei uns gespeicherten personenbezogenen Daten zu verlangen, soweit nicht gesetzliche Aufbewahrungspflichten entgegenstehen.</li>
+        <li><strong>Recht auf Einschränkung der Verarbeitung (Art. 18 DSGVO):</strong> Sie haben das Recht, die Einschränkung der Verarbeitung Ihrer personenbezogenen Daten zu verlangen.</li>
+        <li><strong>Recht auf Datenübertragbarkeit (Art. 20 DSGVO):</strong> Sie haben das Recht, Ihre personenbezogenen Daten in einem strukturierten, gängigen und maschinenlesbaren Format zu erhalten.</li>
+        <li><strong>Widerspruchsrecht (Art. 21 DSGVO):</strong> Sie haben das Recht, aus Gründen, die sich aus Ihrer besonderen Situation ergeben, jederzeit gegen die Verarbeitung Sie betreffender personenbezogener Daten, die aufgrund von Art. 6 Abs. 1 lit. f DSGVO erfolgt, Widerspruch einzulegen.</li>
+        <li><strong>Beschwerderecht (Art. 77 DSGVO):</strong> Sie haben das Recht, sich bei einer Datenschutz-Aufsichtsbehörde zu beschweren (in der Regel die Aufsichtsbehörde Ihres üblichen Aufenthaltsortes oder unseres Sitzes, z.B. Bayerisches Landesamt für Datenschutzaufsicht, BayLDA).</li>
+      </ul>
+
+      <h2>6. Kontaktaufnahme</h2>
+      <p>
+        Wenn Sie uns per E-Mail kontaktieren, werden die von Ihnen mitgeteilten Daten (Ihre E-Mail-Adresse sowie der Inhalt Ihrer Nachricht) verarbeitet, um Ihre Anfrage zu beantworten. Die Verarbeitung erfolgt auf Grundlage von Art. 6 Abs. 1 lit. b DSGVO (vertragliche/vorvertragliche Anfragen) bzw. Art. 6 Abs. 1 lit. f DSGVO (berechtigtes Interesse an der Beantwortung von Anfragen). Wir löschen die Daten, sobald sie für den Zweck ihrer Erhebung nicht mehr erforderlich sind.
+      </p>
+    </main>
+
+    <footer>
+      <div>
+        &copy; 2026 Thomas Pentenrieder. All processing happens locally in your browser.
+      </div>
+      <div class="footer-links">
+        <a href="../">Tools</a>
+        <a href="./">Datenschutz</a>
+        <a href="../impressum/">Impressum</a>
+        <a href="https://github.com/ThomasPe/tools" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://pentenrieder.dev" target="_blank" rel="noopener">pentenrieder.dev</a>
+      </div>
+    </footer>
+  </div>
+
+  <script>
+    const themeToggleBtn = document.getElementById('themeToggleBtn');
+    const themeToggleText = document.getElementById('themeToggleText');
+
+    function applyTheme(theme) {
+      document.documentElement.setAttribute('data-theme', theme);
+      themeToggleText.textContent = theme === 'light' ? 'Light Mode' : 'Dark Mode';
+      localStorage.setItem('tools-theme', theme);
+    }
+
+    const savedTheme = localStorage.getItem('tools-theme') ||
+      (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+    applyTheme(savedTheme);
+
+    themeToggleBtn.addEventListener('click', () => {
+      const current = document.documentElement.getAttribute('data-theme');
+      applyTheme(current === 'light' ? 'dark' : 'light');
+    });
+  </script>
+</body>
+</html>
