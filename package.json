@@ -1,0 +1,22 @@
+{
+  "name": "lumia-motion-photo-converter",
+  "version": "1.0.0",
+  "description": "Transform legacy Windows Phone / Nokia Lumia Living Images (.jpg + .mp4.thm) into modern Google Pixel & Windows 11 Motion Photos in the browser.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/*.mjs"
+  },
+  "keywords": [
+    "motion-photo",
+    "living-images",
+    "lumia",
+    "windows-phone",
+    "pureview",
+    "google-photos",
+    "pixel",
+    "xmp",
+    "client-side"
+  ],
+  "author": "ThomasPe",
+  "license": "MIT"
+}

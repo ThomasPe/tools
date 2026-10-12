@@ -1,0 +1,17 @@
+# Dependencies
+node_modules/
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# Test outputs & temporary files
+converted_motion_photos/
+*.tmp
+*.log
+
+# Personal photo/video sample assets
+*.thm
+*.mp4
+WP_*.jpg
+WP_*.jpeg
