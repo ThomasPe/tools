@@ -64,6 +64,7 @@
     }
 
     .drop-zone:hover, .drop-zone.drag-over { border-color: var(--accent); background: rgba(113, 217, 194, .07); }
+    .drop-zone[aria-disabled="true"] { opacity: .55; cursor: wait; }
     .drop-zone strong { display: block; margin: 8px 0; }
     .drop-zone span { color: var(--muted); font-size: 14px; }
     .drop-icon { color: var(--accent); font-size: 30px; }
@@ -141,7 +142,7 @@
     <header>
       <div class="eyebrow">Photo utility · 100% in your browser</div>
       <h1>Time-lapse Creator</h1>
-      <p>Turn a sequence of photos into a smooth time-lapse video. Choose your images and playback settings, then export a WebM video. Everything stays on your device.</p>
+      <p>Turn a sequence of photos into a smooth time-lapse video. Choose your images and playback settings, then export a video your browser supports. Everything stays on your device.</p>
     </header>
 
     <section class="card" aria-labelledby="imagesHeading">
@@ -186,7 +187,7 @@
           </select>
         </div>
       </div>
-      <p class="settings-note">Each photo becomes one frame. Video length is the number of images divided by FPS. Images with a different aspect ratio are centered on a black background or cropped to fill.</p>
+      <p class="settings-note">Each photo becomes one frame. Video length is the number of images divided by FPS. Use even dimensions; images with a different aspect ratio are centered on a black background or cropped to fill.</p>
       <div class="actions">
         <button class="button button-primary" id="createButton" type="button" disabled>Create time-lapse</button>
         <button class="button button-secondary" id="cancelButton" type="button" hidden>Cancel</button>
@@ -225,6 +226,7 @@
     let resultUrl = null;
     let activeRecorder = null;
     let cancelled = false;
+    let isCreating = false;
 
     function clearResult() {
       result.classList.remove('active');
@@ -234,6 +236,7 @@
     }
 
     function setImages(files) {
+      if (isCreating) return;
       images = [...files]
         .filter(file => file.type.startsWith('image/'))
         .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
@@ -255,7 +258,7 @@
       }
       document.getElementById('fileCount').textContent = `${images.length} image${images.length === 1 ? '' : 's'} selected`;
       document.getElementById('emptyState').hidden = images.length > 0;
-      createButton.disabled = images.length < 2 || Boolean(activeRecorder);
+      createButton.disabled = images.length < 2;
       clearResult();
       status.textContent = '';
       status.className = 'status';
@@ -267,11 +270,13 @@
       status.className = 'status error';
     }
 
-    dropZone.addEventListener('click', () => imageInput.click());
+    dropZone.addEventListener('click', () => {
+      if (!isCreating) imageInput.click();
+    });
     dropZone.addEventListener('keydown', event => {
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
-        imageInput.click();
+        if (!isCreating) imageInput.click();
       }
     });
     imageInput.addEventListener('change', () => setImages(imageInput.files));
@@ -318,8 +323,8 @@
     }
 
     function supportedVideoType() {
-      if (typeof MediaRecorder === 'undefined') return null;
-      return ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm']
+      if (typeof MediaRecorder === 'undefined' || typeof MediaRecorder.isTypeSupported !== 'function') return null;
+      return ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm', 'video/mp4;codecs=avc1.42E01E', 'video/mp4']
         .find(type => MediaRecorder.isTypeSupported(type)) || null;
     }
 
@@ -331,14 +336,14 @@
     }
 
     async function createVideo() {
-      if (images.length < 2 || activeRecorder) return;
+      if (images.length < 2 || isCreating) return;
       const fps = Number(document.getElementById('fps').value);
       const width = Number(document.getElementById('width').value);
       const height = Number(document.getElementById('height').value);
       if (!Number.isInteger(fps) || fps < 1 || fps > 60 ||
-          !Number.isInteger(width) || width < 16 || width > 7680 ||
-          !Number.isInteger(height) || height < 16 || height > 4320) {
-        showError('Enter a frame rate from 1 to 60 and video dimensions within the displayed limits.');
+          !Number.isInteger(width) || width < 16 || width > 7680 || width % 2 !== 0 ||
+          !Number.isInteger(height) || height < 16 || height > 4320 || height % 2 !== 0) {
+        showError('Enter a frame rate from 1 to 60 and even video dimensions within the displayed limits.');
         return;
       }
       const mimeType = supportedVideoType();
@@ -348,6 +353,9 @@
       }
 
       cancelled = false;
+      isCreating = true;
+      imageInput.disabled = true;
+      dropZone.setAttribute('aria-disabled', 'true');
       clearResult();
       status.className = 'status';
       status.textContent = 'Preparing video…';
@@ -360,7 +368,9 @@
       canvas.width = width;
       canvas.height = height;
       const context = canvas.getContext('2d');
-      const stream = canvas.captureStream(fps);
+      const fit = document.getElementById('fit').value;
+      const totalFrames = images.length;
+      let stream;
       const chunks = [];
       let finishRecording;
       let failRecording;
@@ -371,26 +381,35 @@
 
       try {
         const first = await loadImage(images[0]);
-        drawFrame(context, first, width, height, document.getElementById('fit').value);
-        if (typeof first.close === 'function') first.close();
+        drawFrame(context, first, width, height, fit);
+        stream = canvas.captureStream(Math.max(30, fps));
         activeRecorder = new MediaRecorder(stream, { mimeType });
         activeRecorder.addEventListener('dataavailable', event => {
           if (event.data.size > 0) chunks.push(event.data);
         });
         activeRecorder.addEventListener('error', event => failRecording(event.error || new Error('Video recording failed.')));
         activeRecorder.addEventListener('stop', () => finishRecording(new Blob(chunks, { type: mimeType })), { once: true });
+        const recordingStarted = new Promise(resolve => activeRecorder.addEventListener('start', resolve, { once: true }));
         activeRecorder.start();
+        await recordingStarted;
         const frameDuration = 1000 / fps;
+        let currentFrame = first;
 
-        for (let index = 0; index < images.length; index++) {
-          await new Promise(resolve => setTimeout(resolve, frameDuration));
-          if (cancelled) break;
-          setProgress(index + 1, images.length);
-          if (index + 1 < images.length) {
-            const frame = await loadImage(images[index + 1]);
-            drawFrame(context, frame, width, height, document.getElementById('fit').value);
-            if (typeof frame.close === 'function') frame.close();
+        for (let index = 0; index < totalFrames; index++) {
+          if (cancelled) {
+            if (typeof currentFrame.close === 'function') currentFrame.close();
+            break;
           }
+          setProgress(index + 1, totalFrames);
+          const frameDeadline = performance.now() + frameDuration;
+          do {
+            drawFrame(context, currentFrame, width, height, fit);
+            await new Promise(resolve => requestAnimationFrame(resolve));
+          } while (!cancelled && performance.now() < frameDeadline);
+          if (typeof currentFrame.close === 'function') currentFrame.close();
+          if (cancelled) break;
+          const nextFrame = index + 1 < totalFrames ? loadImage(images[index + 1]) : null;
+          if (nextFrame) currentFrame = await nextFrame;
         }
 
         if (activeRecorder.state !== 'inactive') activeRecorder.stop();
@@ -402,16 +421,24 @@
         resultUrl = URL.createObjectURL(blob);
         preview.src = resultUrl;
         downloadLink.href = resultUrl;
-        downloadLink.textContent = 'Download time-lapse.webm';
+        const extension = mimeType.includes('mp4') ? 'mp4' : 'webm';
+        downloadLink.download = `time-lapse.${extension}`;
+        downloadLink.textContent = `Download time-lapse.${extension}`;
         result.classList.add('active');
-        status.textContent = `Created ${images.length} frames as a ${mimeType.split(';')[0]} video (${(blob.size / 1024 / 1024).toFixed(1)} MB).`;
+        const fileSize = blob.size < 1024 * 1024
+          ? `${Math.round(blob.size / 1024)} KB`
+          : `${(blob.size / 1024 / 1024).toFixed(1)} MB`;
+        status.textContent = `Created ${totalFrames} frames as a ${mimeType.split(';')[0]} video (${fileSize}).`;
         status.className = 'status success';
       } catch (error) {
         if (activeRecorder && activeRecorder.state !== 'inactive') activeRecorder.stop();
         showError(error.message || 'Could not create the video.');
       } finally {
-        stream.getTracks().forEach(track => track.stop());
+        stream?.getTracks().forEach(track => track.stop());
         activeRecorder = null;
+        isCreating = false;
+        imageInput.disabled = false;
+        dropZone.removeAttribute('aria-disabled');
         cancelButton.hidden = true;
         createButton.disabled = images.length < 2;
       }

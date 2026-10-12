@@ -122,6 +122,7 @@ test('root index.html (Tools Hub) integrity and navigation', () => {
 
   // Verify link to lumia tool, privacy, and impressum
   assert.ok(hubHtml.includes('lumia-motion-photo-converter'), 'Hub contains link to lumia-motion-photo-converter');
+  assert.ok(hubHtml.includes('href="./timelapse/"'), 'Hub links to the time-lapse creator');
   assert.ok(hubHtml.includes('In-Browser Web Tools'), 'Hub contains main heading');
   assert.ok(hubHtml.includes('pentenrieder.dev'), 'Hub contains pentenrieder.dev branding');
   assert.ok(hubHtml.includes('privacy/'), 'Hub contains link to privacy policy');
@@ -133,6 +134,27 @@ test('root index.html (Tools Hub) integrity and navigation', () => {
     assert.ok(src.includes('plausible.io'), `Hub external scripts only allowed for Plausible, found: ${src}`);
   }
   assert.ok(!hubHtml.includes('<link rel="stylesheet" href="http'), 'Hub has no external stylesheets');
+});
+
+test('time-lapse creator is standalone and exposes image, video, and export controls', () => {
+  const html = fs.readFileSync('timelapse/index.html', 'utf8');
+  const scriptSrcs = [...html.matchAll(/<script[^>]+src=["']([^"']+)["']/g)].map(match => match[1]);
+  assert.deepEqual(scriptSrcs, [], 'Time-lapse creator has no external script dependencies');
+  assert.ok(html.includes('id="imageInput"') && html.includes('multiple'), 'Accepts multiple images');
+  assert.ok(html.includes('id="dropZone"'), 'Includes drag-and-drop image selection');
+  assert.ok(html.includes('id="fps"') && html.includes('id="width"') && html.includes('id="height"'), 'Exposes frame rate and output dimensions');
+  assert.ok(html.includes('id="fit"'), 'Exposes image fit setting');
+  assert.ok(html.includes('captureStream(Math.max(30, fps))'), 'Captures rendered frames at a stable browser frame rate');
+  assert.ok(html.includes('requestAnimationFrame(resolve)'), 'Renders every image throughout its playback interval');
+  assert.ok(html.includes('new MediaRecorder(stream'), 'Records the video locally in the browser');
+  assert.ok(html.includes("'video/mp4'"), 'Uses MP4 when that is the browser-supported recording format');
+  assert.ok(html.includes('width % 2 !== 0'), 'Rejects odd output dimensions');
+  assert.ok(html.includes('id="downloadLink"'), 'Provides a video download');
+
+  const referencedIds = [...html.matchAll(/getElementById\(['"]([^'"]+)['"]\)/g)].map(match => match[1]);
+  for (const id of referencedIds) {
+    assert.ok(html.includes(`id="${id}"`), `Time-lapse page contains element with ID "${id}"`);
+  }
 });
 
 test('impressum and privacy pages exist and exclude medienstudio', () => {
