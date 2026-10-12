@@ -957,6 +957,7 @@
       let cdEntries = eocdView.getUint16(10, true);
       let cdSize = eocdView.getUint32(12, true);
       let cdOffset = eocdView.getUint32(16, true);
+      let delta = 0;
 
       // 2. Check for ZIP64 Locator (PK\x06\x07) 20 bytes preceding EOCD
       if (eocdOffset >= 20 &&
@@ -965,37 +966,53 @@
           jpegBytes[eocdOffset - 18] === 0x06 &&
           jpegBytes[eocdOffset - 17] === 0x07) {
         const locView = new DataView(jpegBytes.buffer, jpegBytes.byteOffset + eocdOffset - 20, 20);
-        const zip64EocdPos = Number(locView.getBigUint64(8, true));
-        if (zip64EocdPos + 56 <= len &&
-            jpegBytes[zip64EocdPos] === 0x50 &&
-            jpegBytes[zip64EocdPos + 1] === 0x4B &&
-            jpegBytes[zip64EocdPos + 2] === 0x06 &&
-            jpegBytes[zip64EocdPos + 3] === 0x06) {
-          const z64View = new DataView(jpegBytes.buffer, jpegBytes.byteOffset + zip64EocdPos, 56);
+        const locZip64EocdPos = Number(locView.getBigUint64(8, true));
+
+        // Check if ZIP64 EOCD is at the recorded offset OR directly adjacent (eocdOffset - 76)
+        let actualZip64Pos = -1;
+        if (locZip64EocdPos + 56 <= len &&
+            jpegBytes[locZip64EocdPos] === 0x50 &&
+            jpegBytes[locZip64EocdPos + 1] === 0x4B &&
+            jpegBytes[locZip64EocdPos + 2] === 0x06 &&
+            jpegBytes[locZip64EocdPos + 3] === 0x06) {
+          actualZip64Pos = locZip64EocdPos;
+          delta = 0;
+        } else if (eocdOffset >= 76 &&
+                   jpegBytes[eocdOffset - 76] === 0x50 &&
+                   jpegBytes[eocdOffset - 75] === 0x4B &&
+                   jpegBytes[eocdOffset - 74] === 0x06 &&
+                   jpegBytes[eocdOffset - 73] === 0x06) {
+          actualZip64Pos = eocdOffset - 76;
+          delta = actualZip64Pos - locZip64EocdPos;
+        }
+
+        if (actualZip64Pos !== -1) {
+          const z64View = new DataView(jpegBytes.buffer, jpegBytes.byteOffset + actualZip64Pos, 56);
           cdEntries = Number(z64View.getBigUint64(32, true));
           cdSize = Number(z64View.getBigUint64(40, true));
           cdOffset = Number(z64View.getBigUint64(48, true));
         }
       }
 
-      // 3. Resolve Central Directory start position (handles absolute vs relative polyglot offsets)
-      let cdStart = cdOffset;
+      // 3. Resolve Central Directory start position (handles absolute vs relative polyglot offsets and shifted ZIPs)
+      let cdStart = cdOffset + delta;
       let isCdValid = (cdStart + 4 <= len &&
                        jpegBytes[cdStart] === 0x50 &&
                        jpegBytes[cdStart + 1] === 0x4B &&
                        jpegBytes[cdStart + 2] === 0x01 &&
                        jpegBytes[cdStart + 3] === 0x02);
 
-      let zipStartOffset = 0;
+      let zipStartOffset = delta;
       if (!isCdValid) {
-        zipStartOffset = eocdOffset - cdSize - cdOffset;
-        if (zipStartOffset >= 0 &&
-            zipStartOffset + cdOffset + 4 <= len &&
-            jpegBytes[zipStartOffset + cdOffset] === 0x50 &&
-            jpegBytes[zipStartOffset + cdOffset + 1] === 0x4B &&
-            jpegBytes[zipStartOffset + cdOffset + 2] === 0x01 &&
-            jpegBytes[zipStartOffset + cdOffset + 3] === 0x02) {
-          cdStart = zipStartOffset + cdOffset;
+        const calcZipStart = eocdOffset - cdSize - cdOffset;
+        if (calcZipStart >= 0 &&
+            calcZipStart + cdOffset + 4 <= len &&
+            jpegBytes[calcZipStart + cdOffset] === 0x50 &&
+            jpegBytes[calcZipStart + cdOffset + 1] === 0x4B &&
+            jpegBytes[calcZipStart + cdOffset + 2] === 0x01 &&
+            jpegBytes[calcZipStart + cdOffset + 3] === 0x02) {
+          cdStart = calcZipStart + cdOffset;
+          zipStartOffset = calcZipStart;
           isCdValid = true;
         }
       }
@@ -1050,8 +1067,8 @@
           extraPos += 4 + tagSize;
         }
 
-        // Resolve local header offset (check absolute vs relative)
-        let absLocalOffset = localOffset;
+        // Resolve local header offset (check absolute with delta vs relative)
+        let absLocalOffset = localOffset + delta;
         if (!(absLocalOffset + 4 <= len &&
               jpegBytes[absLocalOffset] === 0x50 &&
               jpegBytes[absLocalOffset+1] === 0x4B &&

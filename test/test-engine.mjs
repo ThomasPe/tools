@@ -129,5 +129,28 @@ test('extractWin10LivingImage correctly extracts and converts real Windows 10 Mo
   assert.equal(Buffer.compare(trailingBytes, extracted.videoBytes), 0);
 });
 
+test('extractWin10LivingImage extracts shifted ZIP64 archives (e.g. metadata modified)', () => {
+  const weddingSample = 'G:/OneDrive/Bilder/2016/2016-07-30 Robert & Stephanie Hochzeit/WP_20160730_12_20_27_Rich_LI.jpg';
+  if (!fs.existsSync(weddingSample)) {
+    return;
+  }
+
+  const rawBytes = fs.readFileSync(weddingSample);
+  const extracted = extractWin10LivingImage(rawBytes);
+  assert.ok(extracted, 'Should successfully extract from shifted ZIP64');
+  assert.equal(extracted.videoBytes.length, 1043916);
+  const boxType = new TextDecoder().decode(extracted.videoBytes.subarray(4, 8));
+  assert.equal(boxType, 'ftyp', 'Must be valid MP4 starting with ftyp');
+
+  const motionPhoto = convertWin10LivingImage(rawBytes);
+  assert.ok(motionPhoto.length > extracted.stillJpeg.length + extracted.videoBytes.length);
+  assert.equal(motionPhoto[0], 0xFF);
+  assert.equal(motionPhoto[1], 0xD8);
+
+  const asString = new TextDecoder('latin1').decode(motionPhoto);
+  assert.ok(asString.includes('<Camera:MotionPhoto>1</Camera:MotionPhoto>'));
+  assert.ok(asString.includes('<GCamera:MicroVideoOffset>1043916</GCamera:MicroVideoOffset>'));
+});
+
 
 
