@@ -1523,14 +1523,36 @@
       }
     }
 
-    // Drag and drop event listeners
-    dropZone.addEventListener('dragover', (e) => {
+    // Global drag prevention to avoid opening dropped images in tab
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+      window.addEventListener('dragover', (e) => {
+        e.preventDefault();
+      });
+
+      window.addEventListener('drop', (e) => {
+        e.preventDefault();
+      });
+    }
+
+
+    // Drop zone event listeners
+    dropZone.addEventListener('dragenter', (e) => {
       e.preventDefault();
       dropZone.classList.add('drag-over');
     });
 
-    dropZone.addEventListener('dragleave', () => {
-      dropZone.classList.remove('drag-over');
+    dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      if (e.dataTransfer) {
+        e.dataTransfer.dropEffect = 'copy';
+      }
+      dropZone.classList.add('drag-over');
+    });
+
+    dropZone.addEventListener('dragleave', (e) => {
+      if (!dropZone.contains(e.relatedTarget)) {
+        dropZone.classList.remove('drag-over');
+      }
     });
 
     dropZone.addEventListener('drop', async (e) => {
@@ -1539,15 +1561,25 @@
 
       const items = e.dataTransfer.items;
       let files = [];
-      let detectedDirHandle = null;
 
+      // Detect if any dropped item is a directory
+      let hasDirectory = false;
       if (items && items.length > 0) {
-        // Attempt to get directory handle if supported
+        for (let i = 0; i < items.length; i++) {
+          const entry = items[i].webkitGetAsEntry ? items[i].webkitGetAsEntry() : null;
+          if (entry && entry.isDirectory) {
+            hasDirectory = true;
+            break;
+          }
+        }
+      }
+
+      if (hasDirectory && items && items.length > 0) {
+        // If a directory was dropped, try native directory handle first for direct folder save
         if (typeof items[0].getAsFileSystemHandle === 'function') {
           try {
             const handle = await items[0].getAsFileSystemHandle();
             if (handle && handle.kind === 'directory') {
-              detectedDirHandle = handle;
               const dirFiles = [];
               for await (const entry of handle.values()) {
                 if (entry.kind === 'file') {
@@ -1559,7 +1591,7 @@
               return;
             }
           } catch (err) {
-            // Silently fall back to webkitGetAsEntry
+            // Silently fall back to webkit traverse
           }
         }
 
@@ -1573,16 +1605,17 @@
         if (entriesList.length > 0) {
           files = entriesList;
         }
-      }
-
-      if (files.length === 0 && e.dataTransfer.files.length > 0) {
+      } else if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        // Individual photos/files dropped: instantly map from dataTransfer.files
         files = Array.from(e.dataTransfer.files).map(f => ({ name: f.name, file: f }));
       }
 
       if (files.length > 0) {
+        log(`Dropped ${files.length} item(s) onto converter.`, 'info');
         await handleFileScan(files, null);
       }
     });
+
 
     btnSelectFolder.addEventListener('click', (e) => {
       e.stopPropagation();

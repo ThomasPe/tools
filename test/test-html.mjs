@@ -57,8 +57,10 @@ test('converter.html embedded engine functionality', () => {
     DataView,
     Uint8Array,
     Map,
-    Set,
-    window: {},
+    window: {
+      addEventListener: () => {}
+    },
+
     document: {
       documentElement: { getAttribute: () => null, setAttribute: () => {} },
       getElementById: () => ({
