@@ -680,28 +680,34 @@
           <polyline points="12 11 12 17 15 14"></polyline>
           <line x1="12" y1="17" x2="9" y2="14"></line>
         </svg>
-        <div class="drop-title">Select or Drag Photo Folder Here</div>
-        <div class="drop-subtitle">Drag your Lumia photo folder here, or choose your folder to stream files directly into <code>converted_motion_photos/</code>.</div>
+        <div class="drop-title">Select or Drag Photos &amp; Folders Here</div>
+        <div class="drop-subtitle">Select individual photos (<code>_LI.jpg</code> or <code>.jpg</code> + <code>.mp4.thm</code> pairs), or choose an entire photo folder.</div>
 
         <div class="actions-row">
-          <button class="btn btn-primary" id="btnSelectFolder">
+          <button class="btn btn-primary" id="btnSelectFiles">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+              <circle cx="8.5" cy="8.5" r="1.5"></circle>
+              <polyline points="21 15 16 10 5 21"></polyline>
+            </svg>
+            Select Photos (Individual Files)
+          </button>
+          <button class="btn btn-secondary" id="btnSelectFolder">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
             </svg>
-            Select Folder (Direct Auto-Save)
+            Select Folder (Batch Stream)
           </button>
           <button class="btn btn-secondary" id="btnSelectFallbackFolder">
-            Choose Folder (Fallback / Download)
-          </button>
-          <button class="btn btn-secondary" id="btnSelectFiles">
-            Choose Files
+            Folder (Fallback Picker)
           </button>
         </div>
       </div>
 
       <!-- Hidden standard inputs for fallbacks -->
       <input type="file" id="fallbackFolderInput" webkitdirectory directory multiple>
-      <input type="file" id="fallbackFileInput" multiple accept=".jpg,.jpeg,.mp4,.thm">
+      <input type="file" id="fallbackFileInput" multiple accept=".jpg,.jpeg,.mp4,.thm,image/*,video/*">
+
 
       <!-- Statistics Dashboard -->
       <div class="stats-grid" id="statsGrid">
@@ -1378,6 +1384,41 @@
       log(`Scanning ${filesList.length} files...`, 'info');
 
       mediaPairsResult = matchMediaPairs(filesList);
+
+      // Inspect orphan JPEGs to check if they contain embedded Windows 10 Living Images
+      if (mediaPairsResult.orphans.length > 0) {
+        const remainingOrphans = [];
+        for (const orphanName of mediaPairsResult.orphans) {
+          const lower = orphanName.toLowerCase();
+          if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) {
+            const item = filesList.find(f => f.name === orphanName);
+            if (item) {
+              try {
+                const f = item.file || (await item.handle.getFile());
+                // Living images contain an embedded video and are typically > 50KB
+                if (f.size > 50000) {
+                  const buf = await f.arrayBuffer();
+                  const u8 = new Uint8Array(buf);
+                  if (extractWin10LivingImage(u8)) {
+                    mediaPairsResult.win10Images.push({
+                      photoFile: item,
+                      outName: item.name,
+                      isHighRes: lower.includes('highres')
+                    });
+                    log(`Detected embedded Windows 10 Living Image in selected photo: "${orphanName}"`, 'info');
+                    continue;
+                  }
+                }
+              } catch (e) {
+                // Ignore inspection failure and keep as orphan
+              }
+            }
+          }
+          remainingOrphans.push(orphanName);
+        }
+        mediaPairsResult.orphans = remainingOrphans;
+      }
+
       updateStatsUI(filesList, mediaPairsResult);
 
       const win10Count = mediaPairsResult.win10Images ? mediaPairsResult.win10Images.length : 0;
@@ -1396,6 +1437,41 @@
     /* =========================================================================
      * 4. Directory & File Selection Handlers
      * ========================================================================= */
+
+    // Modern Native File Picker for individual photos (Chrome, Edge)
+    async function openFilePicker() {
+      if (window.showOpenFilePicker) {
+        try {
+          const handles = await window.showOpenFilePicker({
+            multiple: true,
+            types: [
+              {
+                description: 'Lumia & Windows 10 Photos (*.jpg, *.mp4.thm)',
+                accept: {
+                  'image/*': ['.jpg', '.jpeg'],
+                  'video/*': ['.mp4', '.thm']
+                }
+              }
+            ]
+          });
+          log(`Selected ${handles.length} individual photo file(s).`, 'info');
+          const files = [];
+          for (const h of handles) {
+            const file = await h.getFile();
+            files.push({ name: h.name, handle: h, file });
+          }
+          await handleFileScan(files, null);
+          return;
+        } catch (err) {
+          if (err.name === 'AbortError') {
+            log('Photo selection was cancelled.', 'info');
+            return;
+          }
+          log(`File picker notice: ${err.message}. Using standard file selector.`, 'warning');
+        }
+      }
+      fallbackFileInput.click();
+    }
 
     // Modern Native Directory Picker (Chrome, Edge)
     async function openDirectoryPicker() {
@@ -1520,15 +1596,11 @@
 
     btnSelectFiles.addEventListener('click', (e) => {
       e.stopPropagation();
-      fallbackFileInput.click();
+      openFilePicker();
     });
 
     dropZone.addEventListener('click', () => {
-      if (window.showDirectoryPicker) {
-        openDirectoryPicker();
-      } else {
-        fallbackFolderInput.click();
-      }
+      openFilePicker();
     });
 
     fallbackFolderInput.addEventListener('change', async (e) => {
@@ -1542,6 +1614,7 @@
       const files = Array.from(e.target.files).map(f => ({ name: f.name, file: f }));
       await handleFileScan(files, null);
     });
+
 
     /* =========================================================================
      * 5. Conversion Execution Loop

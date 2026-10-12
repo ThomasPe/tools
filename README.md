@@ -22,8 +22,7 @@
   * **Windows 10 Mobile:** Unpacks embedded uncompressed ZIP archives (`formats/living/living.mp4` stored with compression method 0) directly from `*_LI.jpg` / `*_Rich_LI.jpg` single files with zero external libraries.
   * Slices and injects standardized XMP APP1 container metadata (`Camera:MotionPhoto` and `Container:Directory`).
   * Appends the trailing video stream after the JPEG `FF D9` marker.
-  * Preserves 100% camera EXIF data byte-for-byte.
-  * Leverages File System Access API (`showDirectoryPicker`) for direct folder-to-folder streaming.
+  * Leverages File System Access API for both individual photo selection (`showOpenFilePicker`) and direct folder-to-folder streaming (`showDirectoryPicker`).
 
 
 ---
