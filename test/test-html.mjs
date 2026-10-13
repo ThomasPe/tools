@@ -158,3 +158,28 @@ test('impressum and privacy pages exist and exclude medienstudio', () => {
   assert.ok(privacyHtml.includes('plausible.io'), 'Privacy contains Plausible script');
   assert.ok(!privacyHtml.toLowerCase().includes('medienstudio'), 'Privacy page MUST NOT contain medienstudio');
 });
+
+test('open graph preview images and meta tags', () => {
+  assert.ok(fs.existsSync('og-image.png'), 'root og-image.png exists');
+  assert.ok(fs.existsSync('lumia-motion-photo-converter/og-image.png'), 'lumia og-image.png exists');
+
+  const filesToCheck = [
+    'index.html',
+    'converter.html',
+    'lumia-motion-photo-converter/index.html',
+    'privacy.html',
+    'privacy/index.html',
+    'impressum.html',
+    'impressum/index.html'
+  ];
+
+  for (const file of filesToCheck) {
+    const html = fs.readFileSync(file, 'utf8');
+    assert.ok(html.includes('<meta property="og:image"'), `${file} contains og:image`);
+    assert.ok(html.includes('<meta property="og:image:width" content="1200">'), `${file} contains og:image:width`);
+    assert.ok(html.includes('<meta property="og:image:height" content="630">'), `${file} contains og:image:height`);
+    assert.ok(html.includes('<meta name="twitter:card" content="summary_large_image">'), `${file} contains twitter:card summary_large_image`);
+    assert.ok(html.includes('<meta name="twitter:image"'), `${file} contains twitter:image`);
+  }
+});
+
