@@ -385,12 +385,24 @@
       let frames = [];
 
       try {
-        frames = await Promise.all(images.map(loadImage));
+        let loaded = 0;
+        status.textContent = 'Loading images…';
+        frames = await Promise.all(images.map(async file => {
+          const frame = await loadImage(file);
+          loaded++;
+          if (!cancelled) {
+            progress.value = loaded / totalFrames;
+            const percent = Math.round(loaded / totalFrames * 100);
+            progressPercent.textContent = `${percent}%`;
+            progressText.textContent = `Loading image ${loaded} of ${totalFrames}`;
+          }
+          return frame;
+        }));
         if (cancelled) {
           status.textContent = 'Time-lapse creation cancelled.';
           return;
         }
-        drawFrame(context, frames[0], width, height, fit);
+        status.textContent = 'Recording video…';
         stream = canvas.captureStream(Math.max(30, fps));
         activeRecorder = new MediaRecorder(stream, { mimeType });
         activeRecorder.addEventListener('dataavailable', event => {
@@ -398,9 +410,7 @@
         });
         activeRecorder.addEventListener('error', event => failRecording(event.error || new Error('Video recording failed.')));
         activeRecorder.addEventListener('stop', () => finishRecording(new Blob(chunks, { type: mimeType })), { once: true });
-        const recordingStarted = new Promise(resolve => activeRecorder.addEventListener('start', resolve, { once: true }));
         activeRecorder.start();
-        await raceRecordingFailure(recordingStarted);
         const frameDuration = 1000 / fps;
 
         for (let index = 0; index < totalFrames; index++) {

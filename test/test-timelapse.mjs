@@ -94,7 +94,7 @@ function createRuntime(options = {}) {
       queueMicrotask(() => {
         if (options.startError) {
           this.dispatch('error', { error: new Error('Encoder failed during startup.') });
-        } else {
+        } else if (!options.noStartEvent) {
           this.dispatch('start');
         }
       });
@@ -217,5 +217,15 @@ test('time-lapse cancellation stops recording and reports cancellation', async (
   await runtime.createVideo();
 
   assert.equal(runtime.nodes.get('status').textContent, 'Time-lapse creation cancelled.');
+  assert.equal(runtime.recorders[0].state, 'inactive');
+});
+
+test('time-lapse succeeds even when MediaRecorder does not dispatch an early start event', async () => {
+  const runtime = createRuntime({ noStartEvent: true });
+  addImages(runtime);
+
+  await within(runtime.createVideo());
+
+  assert.match(runtime.nodes.get('status').textContent, /Created 2 frames/);
   assert.equal(runtime.recorders[0].state, 'inactive');
 });
