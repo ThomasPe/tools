@@ -80,7 +80,7 @@
     .image-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
     .empty-state { color: var(--muted); text-align: center; padding: 18px 0 4px; font-size: 14px; }
 
-    .settings-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+    .settings-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; }
     .field label { display: block; margin-bottom: 7px; font-size: 13px; font-weight: 600; }
     .field input, .field select {
       width: 100%;
@@ -123,7 +123,10 @@
     .result a { display: inline-block; font-weight: 700; }
     .privacy-note { margin-top: 26px; color: var(--muted); font-size: 13px; text-align: center; }
 
-    @media (max-width: 700px) {
+    @media (max-width: 850px) {
+      .settings-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    }
+    @media (max-width: 600px) {
       body { padding: 20px 14px; }
       .card { padding: 18px; }
       .settings-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -186,8 +189,15 @@
             <option value="cover">Fill (crop edges)</option>
           </select>
         </div>
+        <div class="field">
+          <label for="format">Format</label>
+          <select id="format">
+            <option value="mp4">MP4 (H.264)</option>
+            <option value="webm">WebM (VP9/VP8)</option>
+          </select>
+        </div>
       </div>
-      <p class="settings-note">Each photo becomes one frame. Video length is the number of images divided by FPS. Use even dimensions; images with a different aspect ratio are centered on a black background or cropped to fill.</p>
+      <p class="settings-note">Each photo becomes one frame. Video length is the number of images divided by FPS. Use even dimensions; images with a different aspect ratio are centered on a black background or cropped to fill. MP4 (H.264) is universally compatible across Windows, Mac, iPhone, Android, and social media.</p>
       <div class="actions">
         <button class="button button-primary" id="createButton" type="button" disabled>Create time-lapse</button>
         <button class="button button-secondary" id="cancelButton" type="button" hidden>Cancel</button>
@@ -221,6 +231,7 @@
     const result = document.getElementById('result');
     const preview = document.getElementById('preview');
     const downloadLink = document.getElementById('downloadLink');
+    const formatSelect = document.getElementById('format');
     let images = [];
     let previewUrls = [];
     let resultUrl = null;
@@ -322,10 +333,52 @@
       context.drawImage(image, (width - drawWidth) / 2, (height - drawHeight) / 2, drawWidth, drawHeight);
     }
 
-    function supportedVideoType() {
-      if (typeof MediaRecorder === 'undefined' || typeof MediaRecorder.isTypeSupported !== 'function') return null;
-      return ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm', 'video/mp4;codecs=avc1.42E01E', 'video/mp4']
-        .find(type => MediaRecorder.isTypeSupported(type)) || null;
+    function getSupportedFormats() {
+      if (typeof MediaRecorder === 'undefined' || typeof MediaRecorder.isTypeSupported !== 'function') {
+        return { mp4: null, webm: null };
+      }
+      const mp4Types = ['video/mp4;codecs=avc1.42E01E', 'video/mp4;codecs=avc1', 'video/mp4'];
+      const webmTypes = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
+      return {
+        mp4: mp4Types.find(type => MediaRecorder.isTypeSupported(type)) || null,
+        webm: webmTypes.find(type => MediaRecorder.isTypeSupported(type)) || null
+      };
+    }
+
+    function supportedVideoType(preference) {
+      const selected = preference || (formatSelect ? formatSelect.value : 'mp4');
+      const { mp4, webm } = getSupportedFormats();
+      if (selected === 'mp4') return mp4 || webm;
+      if (selected === 'webm') return webm || mp4;
+      return mp4 || webm;
+    }
+
+    function initFormatOptions() {
+      if (!formatSelect) return;
+      const { mp4, webm } = getSupportedFormats();
+      formatSelect.replaceChildren();
+
+      const mp4Option = document.createElement('option');
+      mp4Option.value = 'mp4';
+      if (mp4) {
+        mp4Option.textContent = 'MP4 (H.264)';
+      } else {
+        mp4Option.textContent = 'MP4 (not supported in browser)';
+        mp4Option.disabled = true;
+      }
+      formatSelect.appendChild(mp4Option);
+
+      const webmOption = document.createElement('option');
+      webmOption.value = 'webm';
+      if (webm) {
+        webmOption.textContent = 'WebM (VP9/VP8)';
+      } else {
+        webmOption.textContent = 'WebM (not supported in browser)';
+        webmOption.disabled = true;
+      }
+      formatSelect.appendChild(webmOption);
+
+      formatSelect.value = mp4 ? 'mp4' : (webm ? 'webm' : 'mp4');
     }
 
     function setProgress(current, total) {
@@ -432,14 +485,16 @@
         resultUrl = URL.createObjectURL(blob);
         preview.src = resultUrl;
         downloadLink.href = resultUrl;
-        const extension = mimeType.includes('mp4') ? 'mp4' : 'webm';
+        const isMp4 = mimeType.includes('mp4');
+        const extension = isMp4 ? 'mp4' : 'webm';
+        const formatLabel = isMp4 ? 'MP4 (H.264)' : 'WebM';
         downloadLink.download = `time-lapse.${extension}`;
         downloadLink.textContent = `Download time-lapse.${extension}`;
         result.classList.add('active');
         const fileSize = blob.size < 1024 * 1024
           ? `${Math.round(blob.size / 1024)} KB`
           : `${(blob.size / 1024 / 1024).toFixed(1)} MB`;
-        status.textContent = `Created ${totalFrames} frames as a ${mimeType.split(';')[0]} video (${fileSize}).`;
+        status.textContent = `Created ${totalFrames} frames as a${isMp4 ? 'n' : ''} ${formatLabel} video (${fileSize}).`;
         status.className = 'status success';
       } catch (error) {
         if (activeRecorder && activeRecorder.state !== 'inactive') activeRecorder.stop();
@@ -467,6 +522,7 @@
       for (const url of previewUrls) URL.revokeObjectURL(url);
       if (resultUrl) URL.revokeObjectURL(resultUrl);
     });
+    initFormatOptions();
   </script>
 </body>
 </html>

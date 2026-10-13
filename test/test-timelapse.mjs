@@ -61,16 +61,20 @@ function createRuntime(options = {}) {
     'imageInput', 'dropZone', 'imageList', 'createButton', 'cancelButton',
     'progressWrap', 'progress', 'progressText', 'progressPercent', 'status',
     'result', 'preview', 'downloadLink', 'fileCount', 'emptyState', 'fps',
-    'width', 'height', 'fit'
+    'width', 'height', 'fit', 'format'
   ];
   for (const id of ids) nodes.set(id, new Node());
   nodes.get('fps').value = '10';
   nodes.get('width').value = '320';
   nodes.get('height').value = '240';
   nodes.get('fit').value = 'contain';
+  nodes.get('format').value = 'mp4';
 
   class MockMediaRecorder {
-    static isTypeSupported() { return true; }
+    static isTypeSupported(type) {
+      if (options.unsupportedTypes && options.unsupportedTypes.includes(type)) return false;
+      return true;
+    }
     constructor(stream, settings) {
       this.stream = stream;
       this.settings = settings;
@@ -229,3 +233,44 @@ test('time-lapse succeeds even when MediaRecorder does not dispatch an early sta
   assert.match(runtime.nodes.get('status').textContent, /Created 2 frames/);
   assert.equal(runtime.recorders[0].state, 'inactive');
 });
+
+test('time-lapse records MP4 when requested and supported', async () => {
+  const runtime = createRuntime();
+  runtime.nodes.get('format').value = 'mp4';
+  addImages(runtime);
+
+  await within(runtime.createVideo());
+
+  const [recorder] = runtime.recorders;
+  assert.ok(recorder.settings.mimeType.includes('mp4'), 'Recorder used MP4 mime type');
+  assert.equal(runtime.nodes.get('downloadLink').download, 'time-lapse.mp4');
+  assert.match(runtime.nodes.get('status').textContent, /MP4/);
+});
+
+test('time-lapse records WebM when requested', async () => {
+  const runtime = createRuntime();
+  runtime.nodes.get('format').value = 'webm';
+  addImages(runtime);
+
+  await within(runtime.createVideo());
+
+  const [recorder] = runtime.recorders;
+  assert.ok(recorder.settings.mimeType.includes('webm'), 'Recorder used WebM mime type');
+  assert.equal(runtime.nodes.get('downloadLink').download, 'time-lapse.webm');
+  assert.match(runtime.nodes.get('status').textContent, /WebM/);
+});
+
+test('time-lapse falls back to WebM when MP4 is unsupported by browser', async () => {
+  const runtime = createRuntime({
+    unsupportedTypes: ['video/mp4;codecs=avc1.42E01E', 'video/mp4;codecs=avc1', 'video/mp4']
+  });
+  runtime.nodes.get('format').value = 'mp4';
+  addImages(runtime);
+
+  await within(runtime.createVideo());
+
+  const [recorder] = runtime.recorders;
+  assert.ok(recorder.settings.mimeType.includes('webm'), 'Recorder fell back to WebM');
+  assert.equal(runtime.nodes.get('downloadLink').download, 'time-lapse.webm');
+});
+
