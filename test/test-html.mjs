@@ -145,7 +145,10 @@ test('time-lapse creator is standalone and exposes image, video, and export cont
   assert.ok(html.includes('id="fps"') && html.includes('id="width"') && html.includes('id="height"'), 'Exposes frame rate and output dimensions');
   assert.ok(html.includes('id="fit"'), 'Exposes image fit setting');
   assert.ok(html.includes('id="format"'), 'Exposes format setting');
+  assert.ok(html.includes('id="quality"'), 'Exposes quality setting');
+  assert.ok(html.includes("imageSmoothingQuality = 'high'"), 'Enables high-quality image smoothing');
   assert.ok(html.includes('new MediaRecorder(stream'), 'Records the video locally in the browser');
+  assert.ok(html.includes('videoBitsPerSecond'), 'Applies videoBitsPerSecond to MediaRecorder');
   assert.ok(html.includes("'video/mp4'"), 'Uses MP4 when that is the browser-supported recording format');
   assert.ok(html.includes('width % 2 !== 0'), 'Rejects odd output dimensions');
   assert.ok(html.includes('id="downloadLink"'), 'Provides a video download');

@@ -61,7 +61,7 @@ function createRuntime(options = {}) {
     'imageInput', 'dropZone', 'imageList', 'createButton', 'cancelButton',
     'progressWrap', 'progress', 'progressText', 'progressPercent', 'status',
     'result', 'preview', 'downloadLink', 'fileCount', 'emptyState', 'fps',
-    'width', 'height', 'fit', 'format'
+    'width', 'height', 'fit', 'format', 'quality'
   ];
   for (const id of ids) nodes.set(id, new Node());
   nodes.get('fps').value = '10';
@@ -69,6 +69,7 @@ function createRuntime(options = {}) {
   nodes.get('height').value = '240';
   nodes.get('fit').value = 'contain';
   nodes.get('format').value = 'mp4';
+  nodes.get('quality').value = 'high';
 
   class MockMediaRecorder {
     static isTypeSupported(type) {
@@ -78,6 +79,7 @@ function createRuntime(options = {}) {
     constructor(stream, settings) {
       this.stream = stream;
       this.settings = settings;
+      this.videoBitsPerSecond = settings?.videoBitsPerSecond;
       this.state = 'inactive';
       this.listeners = new Map();
       recorders.push(this);
@@ -262,7 +264,7 @@ test('time-lapse records WebM when requested', async () => {
 
 test('time-lapse falls back to WebM when MP4 is unsupported by browser', async () => {
   const runtime = createRuntime({
-    unsupportedTypes: ['video/mp4;codecs=avc1.42E01E', 'video/mp4;codecs=avc1', 'video/mp4']
+    unsupportedTypes: ['video/mp4;codecs=avc1.64002a', 'video/mp4;codecs=avc1.4d002a', 'video/mp4;codecs=avc1.42E01E', 'video/mp4;codecs=avc1', 'video/mp4']
   });
   runtime.nodes.get('format').value = 'mp4';
   addImages(runtime);
@@ -273,4 +275,27 @@ test('time-lapse falls back to WebM when MP4 is unsupported by browser', async (
   assert.ok(recorder.settings.mimeType.includes('webm'), 'Recorder fell back to WebM');
   assert.equal(runtime.nodes.get('downloadLink').download, 'time-lapse.webm');
 });
+
+test('time-lapse applies high bitrate by default and adjusts with quality setting', async () => {
+  const runtime = createRuntime();
+  addImages(runtime);
+
+  await within(runtime.createVideo());
+
+  const [recorderDefault] = runtime.recorders;
+  assert.equal(recorderDefault.videoBitsPerSecond, 35_000_000, 'Default quality uses 35 Mbps');
+
+  const runtimeMax = createRuntime();
+  runtimeMax.nodes.get('quality').value = 'max';
+  addImages(runtimeMax);
+  await within(runtimeMax.createVideo());
+  assert.equal(runtimeMax.recorders[0].videoBitsPerSecond, 60_000_000, 'Max quality uses 60 Mbps');
+
+  const runtimeMed = createRuntime();
+  runtimeMed.nodes.get('quality').value = 'medium';
+  addImages(runtimeMed);
+  await within(runtimeMed.createVideo());
+  assert.equal(runtimeMed.recorders[0].videoBitsPerSecond, 15_000_000, 'Standard quality uses 15 Mbps');
+});
+
 

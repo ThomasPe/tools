@@ -80,7 +80,7 @@
     .image-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
     .empty-state { color: var(--muted); text-align: center; padding: 18px 0 4px; font-size: 14px; }
 
-    .settings-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; }
+    .settings-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 14px; }
     .field label { display: block; margin-bottom: 7px; font-size: 13px; font-weight: 600; }
     .field input, .field select {
       width: 100%;
@@ -123,7 +123,7 @@
     .result a { display: inline-block; font-weight: 700; }
     .privacy-note { margin-top: 26px; color: var(--muted); font-size: 13px; text-align: center; }
 
-    @media (max-width: 850px) {
+    @media (max-width: 950px) {
       .settings-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     }
     @media (max-width: 600px) {
@@ -196,8 +196,16 @@
             <option value="webm">WebM (VP9/VP8)</option>
           </select>
         </div>
+        <div class="field">
+          <label for="quality">Quality</label>
+          <select id="quality">
+            <option value="high" selected>High (35 Mbps)</option>
+            <option value="max">Maximum (60 Mbps)</option>
+            <option value="medium">Standard (15 Mbps)</option>
+          </select>
+        </div>
       </div>
-      <p class="settings-note">Each photo becomes one frame. Video length is the number of images divided by FPS. Use even dimensions; images with a different aspect ratio are centered on a black background or cropped to fill. MP4 (H.264) is universally compatible across Windows, Mac, iPhone, Android, and social media.</p>
+      <p class="settings-note">Each photo becomes one frame. Video length is the number of images divided by FPS. Use even dimensions; images with a different aspect ratio are centered on a black background or cropped to fill. High quality bitrates preserve crisp details and smooth skies without macroblocking.</p>
       <div class="actions">
         <button class="button button-primary" id="createButton" type="button" disabled>Create time-lapse</button>
         <button class="button button-secondary" id="cancelButton" type="button" hidden>Cancel</button>
@@ -232,6 +240,7 @@
     const preview = document.getElementById('preview');
     const downloadLink = document.getElementById('downloadLink');
     const formatSelect = document.getElementById('format');
+    const qualitySelect = document.getElementById('quality');
     let images = [];
     let previewUrls = [];
     let resultUrl = null;
@@ -323,6 +332,8 @@
     }
 
     function drawFrame(context, image, width, height, fit) {
+      context.imageSmoothingEnabled = true;
+      context.imageSmoothingQuality = 'high';
       context.fillStyle = '#000';
       context.fillRect(0, 0, width, height);
       const scale = fit === 'cover'
@@ -337,12 +348,28 @@
       if (typeof MediaRecorder === 'undefined' || typeof MediaRecorder.isTypeSupported !== 'function') {
         return { mp4: null, webm: null };
       }
-      const mp4Types = ['video/mp4;codecs=avc1.42E01E', 'video/mp4;codecs=avc1', 'video/mp4'];
+      const mp4Types = [
+        'video/mp4;codecs=avc1.64002a',
+        'video/mp4;codecs=avc1.4d002a',
+        'video/mp4;codecs=avc1.42E01E',
+        'video/mp4;codecs=avc1',
+        'video/mp4'
+      ];
       const webmTypes = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
       return {
         mp4: mp4Types.find(type => MediaRecorder.isTypeSupported(type)) || null,
         webm: webmTypes.find(type => MediaRecorder.isTypeSupported(type)) || null
       };
+    }
+
+    function getVideoBitrate(preference) {
+      const q = preference || (qualitySelect ? qualitySelect.value : 'high');
+      switch (q) {
+        case 'max': return 60_000_000;
+        case 'medium': return 15_000_000;
+        case 'high':
+        default: return 35_000_000;
+      }
     }
 
     function supportedVideoType(preference) {
@@ -457,7 +484,8 @@
         }
         status.textContent = 'Recording video…';
         stream = canvas.captureStream(Math.max(30, fps));
-        activeRecorder = new MediaRecorder(stream, { mimeType });
+        const videoBitsPerSecond = getVideoBitrate();
+        activeRecorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond });
         activeRecorder.addEventListener('dataavailable', event => {
           if (event.data.size > 0) chunks.push(event.data);
         });
