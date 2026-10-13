@@ -130,26 +130,34 @@ test('extractWin10LivingImage correctly extracts and converts real Windows 10 Mo
 });
 
 test('extractWin10LivingImage extracts shifted ZIP64 archives (e.g. metadata modified)', () => {
-  const weddingSample = 'G:/OneDrive/Bilder/2016/2016-07-30 Robert & Stephanie Hochzeit/WP_20160730_12_20_27_Rich_LI.jpg';
-  if (!fs.existsSync(weddingSample)) {
+  const realSamplePath = 'G:/OneDrive/Bilder/2016/2016-01-23 Ehrwald/WP_20160123_15_23_26_Pro_LI.jpg';
+  if (!fs.existsSync(realSamplePath)) {
     return;
   }
 
-  const rawBytes = fs.readFileSync(weddingSample);
-  const extracted = extractWin10LivingImage(rawBytes);
+  const rawBytes = fs.readFileSync(realSamplePath);
+  // Simulate metadata expansion (e.g. by OneDrive or photo indexer): insert 450 bytes after SOI
+  const dummyMetadata = Buffer.alloc(450, 0x00);
+  const shiftedBytes = Buffer.concat([
+    rawBytes.subarray(0, 2),
+    dummyMetadata,
+    rawBytes.subarray(2)
+  ]);
+
+  const extracted = extractWin10LivingImage(shiftedBytes);
   assert.ok(extracted, 'Should successfully extract from shifted ZIP64');
-  assert.equal(extracted.videoBytes.length, 1043916);
+  assert.equal(extracted.videoBytes.length, 1636888);
   const boxType = new TextDecoder().decode(extracted.videoBytes.subarray(4, 8));
   assert.equal(boxType, 'ftyp', 'Must be valid MP4 starting with ftyp');
 
-  const motionPhoto = convertWin10LivingImage(rawBytes);
+  const motionPhoto = convertWin10LivingImage(shiftedBytes);
   assert.ok(motionPhoto.length > extracted.stillJpeg.length + extracted.videoBytes.length);
   assert.equal(motionPhoto[0], 0xFF);
   assert.equal(motionPhoto[1], 0xD8);
 
   const asString = new TextDecoder('latin1').decode(motionPhoto);
   assert.ok(asString.includes('<Camera:MotionPhoto>1</Camera:MotionPhoto>'));
-  assert.ok(asString.includes('<GCamera:MicroVideoOffset>1043916</GCamera:MicroVideoOffset>'));
+  assert.ok(asString.includes('<GCamera:MicroVideoOffset>1636888</GCamera:MicroVideoOffset>'));
 });
 
 
