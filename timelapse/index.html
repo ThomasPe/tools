@@ -374,14 +374,23 @@
       const chunks = [];
       let finishRecording;
       let failRecording;
-      const recorded = new Promise((resolve, reject) => {
+      const recorded = new Promise(resolve => {
         finishRecording = resolve;
+      });
+      const recordingFailed = new Promise((resolve, reject) => {
         failRecording = reject;
       });
+      recordingFailed.catch(() => {});
+      const raceRecordingFailure = promise => Promise.race([promise, recordingFailed]);
+      let frames = [];
 
       try {
-        const first = await loadImage(images[0]);
-        drawFrame(context, first, width, height, fit);
+        frames = await Promise.all(images.map(loadImage));
+        if (cancelled) {
+          status.textContent = 'Time-lapse creation cancelled.';
+          return;
+        }
+        drawFrame(context, frames[0], width, height, fit);
         stream = canvas.captureStream(Math.max(30, fps));
         activeRecorder = new MediaRecorder(stream, { mimeType });
         activeRecorder.addEventListener('dataavailable', event => {
@@ -391,25 +400,17 @@
         activeRecorder.addEventListener('stop', () => finishRecording(new Blob(chunks, { type: mimeType })), { once: true });
         const recordingStarted = new Promise(resolve => activeRecorder.addEventListener('start', resolve, { once: true }));
         activeRecorder.start();
-        await recordingStarted;
+        await raceRecordingFailure(recordingStarted);
         const frameDuration = 1000 / fps;
-        let currentFrame = first;
 
         for (let index = 0; index < totalFrames; index++) {
-          if (cancelled) {
-            if (typeof currentFrame.close === 'function') currentFrame.close();
-            break;
-          }
+          if (cancelled) break;
           setProgress(index + 1, totalFrames);
           const frameDeadline = performance.now() + frameDuration;
           do {
-            drawFrame(context, currentFrame, width, height, fit);
-            await new Promise(resolve => requestAnimationFrame(resolve));
+            drawFrame(context, frames[index], width, height, fit);
+            await raceRecordingFailure(new Promise(resolve => requestAnimationFrame(resolve)));
           } while (!cancelled && performance.now() < frameDeadline);
-          if (typeof currentFrame.close === 'function') currentFrame.close();
-          if (cancelled) break;
-          const nextFrame = index + 1 < totalFrames ? loadImage(images[index + 1]) : null;
-          if (nextFrame) currentFrame = await nextFrame;
         }
 
         if (activeRecorder.state !== 'inactive') activeRecorder.stop();
@@ -434,6 +435,9 @@
         if (activeRecorder && activeRecorder.state !== 'inactive') activeRecorder.stop();
         showError(error.message || 'Could not create the video.');
       } finally {
+        frames.forEach(frame => {
+          if (typeof frame.close === 'function') frame.close();
+        });
         stream?.getTracks().forEach(track => track.stop());
         activeRecorder = null;
         isCreating = false;
