@@ -24,6 +24,14 @@
   * Appends the trailing video stream after the JPEG `FF D9` marker.
   * Leverages File System Access API for both individual photo selection (`showOpenFilePicker`) and direct folder-to-folder streaming (`showDirectoryPicker`).
 
+### 2. Time-lapse Creator
+* **URL:** [https://tools.pentenrieder.dev/timelapse/](https://tools.pentenrieder.dev/timelapse/)
+* **Directory:** [`timelapse/`](timelapse/)
+* **Description:** Creates downloadable time-lapse videos from a sequence of images entirely in the browser, with no backend or uploads. The browser's supported recording format (WebM or MP4) is used.
+* **Key Capabilities:**
+  * Select or drag and drop images; frames are sorted naturally by filename.
+  * Configure frame rate, output dimensions, and whether images fit or fill the frame.
+  * Preview and download the video recorded through the browser's MediaRecorder API.
 
 ---
 
@@ -34,6 +42,8 @@ tools/
 ├── CNAME                              # Custom domain (tools.pentenrieder.dev)
 ├── index.html                         # Tools Hub portal homepage
 ├── lumia-motion-photo-converter/      # Tool 1: Lumia converter web app
+│   └── index.html
+├── timelapse/                         # Tool 2: Time-lapse video creator
 │   └── index.html
 ├── privacy/                           # Privacy policy (Datenschutzerklärung)
 │   └── index.html
