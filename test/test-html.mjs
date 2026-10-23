@@ -123,6 +123,7 @@ test('root index.html (Tools Hub) integrity and navigation', () => {
   // Verify link to lumia tool, privacy, and impressum
   assert.ok(hubHtml.includes('lumia-motion-photo-converter'), 'Hub contains link to lumia-motion-photo-converter');
   assert.ok(hubHtml.includes('href="./timelapse/"'), 'Hub links to the time-lapse creator');
+  assert.ok(hubHtml.includes('href="./gridfinity/"'), 'Hub links to Gridfinity Tool Slot Studio');
   assert.ok(hubHtml.includes('In-Browser Web Tools'), 'Hub contains main heading');
   assert.ok(hubHtml.includes('pentenrieder.dev'), 'Hub contains pentenrieder.dev branding');
   assert.ok(hubHtml.includes('privacy/'), 'Hub contains link to privacy policy');
