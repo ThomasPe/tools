@@ -84,7 +84,7 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
         {/* Header */}
         <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/60">
           <div className="flex items-center gap-2">
-            <FileJson className="w-5 h-5 text-indigo-400" />
+            <FileJson className="w-5 h-5 text-sky-400" />
             <h2 className="text-sm font-bold text-white">Project Configuration (Export / Import)</h2>
           </div>
           <button
@@ -105,9 +105,9 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
           <div className="grid grid-cols-2 gap-2">
             <button
               onClick={handleCopy}
-              className="py-2.5 px-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-2 shadow-lg shadow-indigo-900/30 transition cursor-pointer"
+              className="py-2.5 px-3 bg-gradient-to-r from-sky-500 to-cyan-500 hover:from-sky-400 hover:to-cyan-400 text-slate-950 font-bold rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-sky-500/25 transition cursor-pointer"
             >
-              {copied ? <Check className="w-4 h-4 text-emerald-300" /> : <Copy className="w-4 h-4" />}
+              {copied ? <Check className="w-4 h-4 text-emerald-950 font-bold" /> : <Copy className="w-4 h-4" />}
               <span>{copied ? 'Copied to Clipboard!' : 'Copy Config JSON'}</span>
             </button>
             <button
@@ -137,7 +137,7 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
             <textarea
               readOnly
               value={jsonString}
-              className="w-full h-36 bg-slate-950 font-mono text-[11px] text-slate-300 p-2.5 rounded-lg border border-slate-800 outline-none resize-none selection:bg-indigo-800"
+              className="w-full h-36 bg-slate-950 font-mono text-[11px] text-slate-300 p-2.5 rounded-lg border border-slate-800 outline-none resize-none selection:bg-sky-900"
             />
           </div>
 
@@ -145,7 +145,7 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
           <div className="pt-2 border-t border-slate-800 space-y-2">
             <div className="flex items-center justify-between">
               <label className="text-xs font-semibold text-slate-200">Import Configuration</label>
-              <label className="text-xs text-indigo-400 hover:text-indigo-300 cursor-pointer flex items-center gap-1 font-medium">
+              <label className="text-xs text-sky-400 hover:text-sky-300 cursor-pointer flex items-center gap-1 font-medium">
                 <Upload className="w-3 h-3" />
                 <span>Upload .json</span>
                 <input
@@ -160,7 +160,7 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
               placeholder="Paste JSON configuration text here..."
               value={pasteText}
               onChange={e => setPasteText(e.target.value)}
-              className="w-full h-24 bg-slate-950 font-mono text-[11px] text-slate-200 p-2.5 rounded-lg border border-slate-800 focus:border-indigo-500 outline-none resize-none"
+              className="w-full h-24 bg-slate-950 font-mono text-[11px] text-slate-200 p-2.5 rounded-lg border border-slate-800 focus:border-sky-500 outline-none resize-none"
             />
             {error && (
               <div className="flex items-center gap-1.5 text-xs text-red-400 bg-red-950/40 p-2 rounded border border-red-900/50">

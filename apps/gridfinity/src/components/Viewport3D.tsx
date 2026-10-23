@@ -98,7 +98,7 @@ export const Viewport3D: React.FC<Viewport3DProps> = ({
     scene.add(dirLight2);
 
     // 6. Gridfinity Ground Grid (42mm grid pitch)
-    const gridHelper = new THREE.GridHelper(420, 10, 0x4f46e5, 0x1e293b);
+    const gridHelper = new THREE.GridHelper(420, 10, 0x38bdf8, 0x1e293b);
     gridHelper.rotation.x = Math.PI / 2; // Lie flat in XY plane
     scene.add(gridHelper);
 
@@ -442,7 +442,7 @@ export const Viewport3D: React.FC<Viewport3DProps> = ({
             title="Toggle Wireframe"
             className={`p-2 rounded-xl border text-xs transition ${
               showWireframe
-                ? 'bg-indigo-600 border-indigo-400 text-white'
+                ? 'bg-sky-500 border-sky-400 text-slate-950 font-bold'
                 : 'bg-slate-900/90 border-slate-800 text-slate-400 hover:text-slate-200'
             }`}
           >
@@ -486,8 +486,8 @@ export const Viewport3D: React.FC<Viewport3DProps> = ({
       {/* Loading Overlay */}
       {isComputing && (
         <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm flex flex-col items-center justify-center gap-3 z-30 pointer-events-auto">
-          <div className="w-10 h-10 border-4 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin" />
-          <div className="text-sm font-semibold text-emerald-400">Computing Watertight CSG Boolean...</div>
+          <div className="w-10 h-10 border-4 border-sky-500/20 border-t-sky-400 rounded-full animate-spin" />
+          <div className="text-sm font-semibold text-sky-400">Computing Watertight CSG Boolean...</div>
           <div className="text-xs text-slate-400">libmanifold WebAssembly processing</div>
         </div>
       )}
@@ -503,7 +503,7 @@ export const Viewport3D: React.FC<Viewport3DProps> = ({
           <span>Tool Ghost</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 inline-block" />
+          <span className="w-2.5 h-2.5 rounded-full bg-sky-400 inline-block" />
           <span>42mm Ground Grid</span>
         </div>
       </div>

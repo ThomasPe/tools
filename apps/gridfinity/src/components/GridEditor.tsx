@@ -84,12 +84,12 @@ export const GridEditor: React.FC<GridEditorProps> = ({
     <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-lg">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <Grid className="w-5 h-5 text-indigo-400" />
+          <Grid className="w-5 h-5 text-sky-400" />
           <h3 className="font-semibold text-sm text-slate-100 uppercase tracking-wider">
             Grid Footprint (42mm Tiles)
           </h3>
         </div>
-        <span className="text-xs bg-indigo-950 text-indigo-300 font-mono px-2 py-0.5 rounded border border-indigo-800">
+        <span className="text-xs bg-sky-950/80 text-sky-300 font-mono px-2 py-0.5 rounded border border-sky-800/80">
           {cells.length} {cells.length === 1 ? 'tile' : 'tiles'} ({widthMm} × {depthMm} mm)
         </span>
       </div>
@@ -116,21 +116,21 @@ export const GridEditor: React.FC<GridEditorProps> = ({
         </button>
         <button
           onClick={() => applyPreset('2x2-L')}
-          className="text-xs px-2 py-1 bg-indigo-900/60 hover:bg-indigo-800 text-indigo-200 border border-indigo-700/50 rounded flex items-center gap-1 transition"
+          className="text-xs px-2 py-1 bg-sky-950/70 hover:bg-sky-900/70 text-sky-200 border border-sky-800/60 rounded flex items-center gap-1 transition"
         >
-          <Sparkles className="w-3 h-3 text-indigo-400" /> L-Shape
+          <Sparkles className="w-3 h-3 text-sky-400" /> L-Shape
         </button>
         <button
           onClick={() => applyPreset('3x2-T')}
-          className="text-xs px-2 py-1 bg-indigo-900/60 hover:bg-indigo-800 text-indigo-200 border border-indigo-700/50 rounded flex items-center gap-1 transition"
+          className="text-xs px-2 py-1 bg-sky-950/70 hover:bg-sky-900/70 text-sky-200 border border-sky-800/60 rounded flex items-center gap-1 transition"
         >
-          <Sparkles className="w-3 h-3 text-indigo-400" /> T-Shape
+          <Sparkles className="w-3 h-3 text-sky-400" /> T-Shape
         </button>
         <button
           onClick={() => applyPreset('3x3-U')}
-          className="text-xs px-2 py-1 bg-indigo-900/60 hover:bg-indigo-800 text-indigo-200 border border-indigo-700/50 rounded flex items-center gap-1 transition"
+          className="text-xs px-2 py-1 bg-sky-950/70 hover:bg-sky-900/70 text-sky-200 border border-sky-800/60 rounded flex items-center gap-1 transition"
         >
-          <Sparkles className="w-3 h-3 text-indigo-400" /> U-Shape
+          <Sparkles className="w-3 h-3 text-sky-400" /> U-Shape
         </button>
         <button
           onClick={() => applyPreset('clear')}
@@ -163,7 +163,7 @@ export const GridEditor: React.FC<GridEditorProps> = ({
                     onClick={() => toggleCell(x, y)}
                     className={`rounded-md transition-all flex items-center justify-center text-[10px] font-mono select-none ${
                       active
-                        ? 'bg-indigo-600 text-white font-bold shadow-md shadow-indigo-600/30 border border-indigo-400 scale-[0.98]'
+                        ? 'bg-sky-500 text-slate-950 font-bold shadow-md shadow-sky-500/30 border border-sky-300 scale-[0.98]'
                         : 'bg-slate-800/80 hover:bg-slate-700/80 text-slate-500 border border-slate-700/40'
                     }`}
                     title={`Cell (${x}, ${y}) - Click to toggle`}
