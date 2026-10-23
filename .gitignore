@@ -1,5 +1,11 @@
 # Dependencies
 node_modules/
+apps/*/node_modules/
+apps/*/.tmp/
+apps/*/dist/
+
+# CI-built deployment outputs
+/gridfinity/
 
 # OS Files
 .DS_Store

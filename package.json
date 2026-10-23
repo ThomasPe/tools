@@ -4,6 +4,8 @@
   "description": "A curated collection of fast, private, 100% client-side web utilities hosted at tools.pentenrieder.dev.",
   "type": "module",
   "scripts": {
+    "build:gridfinity": "pnpm --dir apps/gridfinity run build",
+    "build": "pnpm run build:gridfinity",
     "test": "node --test test/*.mjs"
   },
   "keywords": [
@@ -13,6 +15,9 @@
     "motion-photo",
     "living-images",
     "lumia",
+    "gridfinity",
+    "manifold-3d",
+    "3d-printing",
     "in-browser"
   ],
   "author": "ThomasPe",

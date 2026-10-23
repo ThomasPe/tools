@@ -33,6 +33,17 @@
   * Configure frame rate, output dimensions, and whether images fit or fill the frame.
   * Preview and download the video recorded through the browser's MediaRecorder API.
 
+### 3. Gridfinity Tool Slot Studio
+* **URL:** [https://tools.pentenrieder.dev/gridfinity/](https://tools.pentenrieder.dev/gridfinity/)
+* **Directory:** [`apps/gridfinity/`](apps/gridfinity/) (Source) &amp; [`gridfinity/`](gridfinity/) (Built Deployment)
+* **Description:** Generates custom-shaped continuous Gridfinity bins (rectangles, L-shapes, T-shapes, U-shapes) with precision STL tool slot cutouts for shadow foam and custom drawer organizers. Powered by Three.js and Manifold 3D WebAssembly.
+* **Key Capabilities:**
+  * **2D Polyomino Grid Footprint:** Interactive tile editor with Gridfinity standard 3.75 mm rounded corners and 42 mm base stacking profiles.
+  * **3D Transform Gizmo:** Upload custom tool STLs or pick built-in presets; position, rotate, and scale in real-time with automatic center & drop-to-surface helpers.
+  * **Undercut Removal:** Automated silhouette extrusion ("extrude to top") guarantees tools with overhanging bulges pull straight out vertically.
+  * **Ergonomics & Sockets:** Parametric finger pull notches, customizable floor thickness, and optional base magnet holes.
+  * **Instant STL Export:** Sub-second CSG boolean difference in WebAssembly, exporting watertight binary STLs ready for slicers.
+
 ---
 
 ## 📁 Repository Structure
@@ -45,6 +56,11 @@ tools/
 │   └── index.html
 ├── timelapse/                         # Tool 2: Time-lapse video creator
 │   └── index.html
+├── apps/
+│   └── gridfinity/                    # Tool 3: Gridfinity Studio (Vite + React + WASM source)
+├── gridfinity/                        # Tool 3: Built distribution (generated during CI deployment)
+│   ├── index.html
+│   └── assets/
 ├── privacy/                           # Privacy policy (Datenschutzerklärung)
 │   └── index.html
 ├── impressum/                         # Legal imprint (§ 5 TMG)
@@ -55,7 +71,8 @@ tools/
 ├── test/                              # Automated test suites (Node.js test runner)
 │   ├── test-engine.mjs
 │   ├── test-matcher.mjs
-│   └── test-html.mjs
+│   ├── test-html.mjs
+│   └── test-timelapse.mjs
 ├── .github/workflows/
 │   └── deploy.yml                     # GitHub Actions CI & Pages deployment
 ├── package.json
