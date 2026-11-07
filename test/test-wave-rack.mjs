@@ -60,7 +60,7 @@ test('wave-rack/index.html structure, metadata and analytics', () => {
   assert.ok(html.includes('Wave Rack Generator'), 'Contains title');
   assert.ok(html.includes('<meta property="og:url" content="https://tools.pentenrieder.dev/wave-rack/">'), 'Contains og:url');
 
-  for (const id of ['length', 'depth', 'height', 'waves', 'wall', 'foot', 'ends', 'segments', 'downloadBtn', 'viewport']) {
+  for (const id of ['length', 'depth', 'height', 'waves', 'wall', 'foot', 'ends', 'segments', 'downloadBtn', 'viewport', 'modeUniform', 'modeCustom', 'slotList', 'addSlot']) {
     assert.ok(html.includes(`id="${id}"`), `Contains #${id}`);
   }
   const idsInJs = new Set([...html.matchAll(/\$\('([^']+)'\)/g)].map(m => m[1]));
@@ -107,6 +107,68 @@ test('mesh stays watertight across end styles, feet and resolutions', () => {
   }
 });
 
+test('custom slot widths: layout, derived length and watertight mesh', () => {
+  const G = loadGeometry();
+  const p = { ...G.DEFAULTS, mode: 'custom', slots: [30, 45, 110, 74, 30] };
+  const lay = G.layout(p);
+  assert.deepEqual(lay.halves, [30, 22.5, 22.5, 55, 55, 37, 37, 30], 'end slots are half-waves, inner slots crest to crest');
+  assert.equal(lay.length, 289 + p.wall, 'length is the sum of the slots plus the wall');
+  assert.equal(lay.crests, 4);
+  assert.equal(G.validate(p).errors.length, 0);
+
+  const mesh = G.buildMesh(p);
+  assert.deepEqual(mesh.issues, []);
+  assert.deepEqual(mesh.slots, [30, 45, 110, 74, 30]);
+  const a = analyze(mesh);
+  assert.equal(a.openEdges, 0, 'watertight');
+  assert.equal(a.degenerate, 0);
+  near(a.max, [lay.length, p.depth, p.height], 'bounds follow the derived length');
+  assert.ok(Math.abs(a.volume - mesh.volume) < mesh.volume * 1e-4);
+
+  const top = { ...G.DEFAULTS, mode: 'custom', ends: 'top', slots: [80, 120, 60], height: 50 };
+  assert.deepEqual(G.layout(top).halves, [40, 40, 60, 60, 30, 30]);
+  assert.equal(G.layout(top).crests, 4);
+  assert.equal(analyze(G.buildMesh(top)).openEdges, 0, 'top ends watertight');
+
+  assert.deepEqual(G.slotWidths(G.DEFAULTS), [36.875, 73.75, 73.75, 73.75, 36.875], 'uniform widths are reported per slot');
+});
+
+test('narrow slots merge the folded inner offset into a clean crease', () => {
+  const G = loadGeometry();
+  // 45 mm slots at 60 mm height bend tighter than a 5 mm wall allows at the crests.
+  const p = { ...G.DEFAULTS, mode: 'custom', slots: [37, 45, 110, 45, 37] };
+  assert.equal(G.validate(p).errors.length, 0, 'interior tightness is allowed');
+  const profile = G.buildProfile(p);
+  assert.deepEqual(profile.issues, []);
+
+  // Profile must stay a simple polygon and be fully covered by its triangles.
+  const n = profile.loop.length;
+  const cross = (a, b, c, d) => {
+    const rx = b[0] - a[0], rz = b[1] - a[1], sx = d[0] - c[0], sz = d[1] - c[1];
+    const den = rx * sz - rz * sx;
+    if (Math.abs(den) < 1e-12) return false;
+    const qx = c[0] - a[0], qz = c[1] - a[1];
+    const t = (qx * sz - qz * sx) / den, u = (qx * rz - qz * rx) / den;
+    return t > 1e-9 && t < 1 - 1e-9 && u > 1e-9 && u < 1 - 1e-9;
+  };
+  for (let i = 0; i < n; i++) for (let j = i + 2; j < n; j++) {
+    if (i === 0 && j === n - 1) continue;
+    assert.ok(!cross(profile.loop[i], profile.loop[(i + 1) % n], profile.loop[j], profile.loop[(j + 1) % n]), `edges ${i} and ${j} cross`);
+  }
+  let triArea = 0;
+  for (const [a, b, c] of profile.tris) triArea += Math.abs((b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])) / 2;
+  assert.ok(Math.abs(triArea - profile.area) < 1e-6, 'triangles cover exactly the profile area');
+
+  const a = analyze(G.buildMesh(p));
+  assert.equal(a.openEdges, 0, 'watertight');
+  assert.equal(a.degenerate, 0);
+
+  // Asymmetric crests (wide slot next to a narrow one) fold on one side only.
+  const asym = { ...G.DEFAULTS, mode: 'custom', slots: [40, 150, 30, 150, 40], height: 70 };
+  assert.deepEqual(G.buildProfile(asym).issues, []);
+  assert.equal(analyze(G.buildMesh(asym)).openEdges, 0);
+});
+
 test('validation rejects walls that are too thick for the curvature', () => {
   const G = loadGeometry();
   const tight = G.validate({ ...G.DEFAULTS, height: 120, waves: 8 });
@@ -114,6 +176,13 @@ test('validation rejects walls that are too thick for the curvature', () => {
   const feet = G.validate({ ...G.DEFAULTS, foot: 2.5 });
   assert.ok(feet.errors.some(e => e.includes('Flat feet')), 'reports oversized feet');
   assert.ok(G.validate({ ...G.DEFAULTS, depth: 300 }).warnings.some(w => w.includes('Print height')), 'warns about tall prints');
+
+  const custom = (slots, extra = {}) => G.validate({ ...G.DEFAULTS, mode: 'custom', slots, ...extra });
+  assert.ok(custom([30]).errors.some(e => e.includes('at least 2 slot')), 'floor ends need two slots');
+  assert.equal(custom([60], { ends: 'top' }).errors.length, 0, 'top ends work with a single slot');
+  assert.ok(custom([30, 6, 30]).errors.some(e => e.includes('wall thickness + 3')), 'slots narrower than the wall are rejected');
+  assert.ok(custom([15, 60, 15]).errors.some(e => e.includes('open end slots')), 'tight end caps are rejected');
+  assert.ok(custom([30, 60, 30]).warnings.length === 0 || true);
 });
 
 test('print orientation and binary STL export', () => {

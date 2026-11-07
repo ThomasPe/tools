@@ -95,6 +95,23 @@
     input[type="number"]:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: transparent; }
     .help { margin: 4px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
 
+    .mode-seg { display: inline-flex; width: 100%; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 14px; }
+    .mode-seg button { flex: 1; padding: 8px 10px; border: 0; background: transparent; color: var(--muted); cursor: pointer; font-size: 13px; font-weight: 600; }
+    .mode-seg button.active { background: var(--accent); color: #06201a; }
+    .field.derived input { opacity: .55; }
+    .slot-list { display: grid; gap: 6px; margin-bottom: 8px; }
+    .slot-row { display: grid; grid-template-columns: 60px 1fr auto; gap: 8px; align-items: center; }
+    .slot-row .slot-name { color: var(--muted); font-size: 12px; }
+    .slot-row .slot-name small { display: block; font-size: 10px; opacity: .8; }
+    .slot-row button {
+      width: 32px; height: 32px; border: 1px solid var(--border); border-radius: 8px;
+      background: transparent; color: var(--muted); cursor: pointer; font-size: 16px; line-height: 1;
+    }
+    .slot-row button:hover:not(:disabled) { color: var(--danger); border-color: var(--danger); }
+    .slot-row button:disabled { opacity: .3; cursor: not-allowed; }
+    .slot-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .btn-small { padding: 7px 12px; font-size: 13px; border-radius: 9px; }
+
     details { margin-top: 6px; border-top: 1px solid var(--border); padding-top: 12px; }
     summary { cursor: pointer; color: var(--muted); font-size: 13px; font-weight: 600; margin-bottom: 12px; user-select: none; }
     summary:hover { color: var(--text); }
@@ -173,12 +190,18 @@
       <section class="card" aria-label="Parameters">
         <h2>Dimensions</h2>
 
-        <div class="field">
-          <div class="field-head"><label for="length">Length</label><span class="unit">mm &middot; along the wave</span></div>
+        <div class="mode-seg" role="group" aria-label="Slot layout">
+          <button type="button" id="modeUniform" class="active">Uniform waves</button>
+          <button type="button" id="modeCustom">Custom slot widths</button>
+        </div>
+
+        <div class="field" id="lengthField">
+          <div class="field-head"><label for="length">Length</label><span class="unit" id="lengthUnit">mm &middot; along the wave</span></div>
           <div class="field-row">
             <input type="range" id="lengthRange" min="80" max="600" step="1">
             <input type="number" id="length" min="40" max="1000" step="1">
           </div>
+          <p class="help" id="lengthHelp" hidden>Derived from the slot widths plus the wall thickness.</p>
         </div>
 
         <div class="field">
@@ -198,13 +221,23 @@
           </div>
         </div>
 
-        <div class="field">
+        <div class="field" id="wavesField">
           <div class="field-head"><label for="waves">Waves</label><span class="unit">count &middot; frequency</span></div>
           <div class="field-row">
             <input type="range" id="wavesRange" min="1" max="12" step="1">
             <input type="number" id="waves" min="1" max="40" step="1">
           </div>
-          <p class="help">Number of crests. Each crest separates two slots.</p>
+          <p class="help">Number of full waves, evenly spaced along the length.</p>
+        </div>
+
+        <div class="field" id="slotsField" hidden>
+          <div class="field-head"><label>Slot widths</label><span class="unit">mm &middot; left to right</span></div>
+          <div class="slot-list" id="slotList"></div>
+          <div class="slot-actions">
+            <button type="button" class="btn btn-ghost btn-small" id="addSlot">+ Add slot</button>
+            <button type="button" class="btn btn-ghost btn-small" id="addWideSlot">+ Add wide slot</button>
+          </div>
+          <p class="help">Give thick boards wider slots and thin ones narrower slots. A slot is measured crest to crest; with troughs at both ends, the first and last slots are open and measured from the end of the rack to the first crest.</p>
         </div>
 
         <details>
@@ -267,7 +300,7 @@
         <canvas id="viewport"></canvas>
 
         <div class="stats">
-          <div class="stat"><div class="stat-label">Slot pitch</div><div class="stat-value" id="statPitch">&ndash;</div></div>
+          <div class="stat"><div class="stat-label">Slot widths</div><div class="stat-value" id="statPitch">&ndash;</div></div>
           <div class="stat"><div class="stat-label">Max. slope</div><div class="stat-value" id="statSlope">&ndash;</div></div>
           <div class="stat"><div class="stat-label">Bed footprint</div><div class="stat-value" id="statFootprint">&ndash;</div></div>
           <div class="stat"><div class="stat-label">Print height</div><div class="stat-value" id="statPrintHeight">&ndash;</div></div>
@@ -307,36 +340,86 @@
         wall: 5,
         foot: 1,
         ends: 'floor',
-        segments: 48
+        segments: 48,
+        mode: 'uniform',   // 'uniform' (length + waves) or 'custom' (explicit slot widths)
+        slots: []          // custom mode: slot widths in mm, left to right
       });
+
+      // Turns the parameters into a list of half-waves (each a smooth rise or
+      // fall of horizontal width w). Uniform mode: 2 × waves equal halves.
+      // Custom mode: every slot is a full valley measured crest to crest, except
+      // that with troughs at both ends the first and last slots are open
+      // half-waves measured from the end of the rack to the first crest.
+      function layout(p) {
+        const halves = [];
+        if (p.mode === 'custom') {
+          const slots = (p.slots || []).map(Number);
+          if (p.ends === 'top') {
+            for (const w of slots) halves.push(w / 2, w / 2);
+          } else {
+            slots.forEach((w, i) => {
+              if (i === 0 || i === slots.length - 1) halves.push(w);
+              else halves.push(w / 2, w / 2);
+            });
+          }
+        } else {
+          const half = (p.length - p.wall) / p.waves / 2;
+          for (let i = 0; i < 2 * p.waves; i++) halves.push(half);
+        }
+        const span = halves.reduce((a, b) => a + b, 0);
+        const crests = p.ends === 'top' ? halves.length / 2 + 1 : halves.length / 2;
+        return { halves, span, length: span + p.wall, crests, minHalf: Math.min(...halves), maxHalf: Math.max(...halves) };
+      }
+
+      function effectiveLength(p) { return layout(p).length; }
 
       function validate(p) {
         const errors = [];
         const warnings = [];
-        if (!(p.length > 0) || !(p.depth > 0) || !(p.height > 0) || !(p.wall > 0) || !(p.waves >= 1)) {
+        const custom = p.mode === 'custom';
+        if (!(p.depth > 0) || !(p.height > 0) || !(p.wall > 0) || (!custom && (!(p.length > 0) || !(p.waves >= 1)))) {
           errors.push('All dimensions must be positive numbers.');
           return { errors, warnings };
         }
+        if (custom) {
+          const slots = p.slots || [];
+          const minSlots = p.ends === 'top' ? 1 : 2;
+          if (slots.length < minSlots) errors.push(`Add at least ${minSlots} slot${minSlots > 1 ? 's' : ''} (with troughs at both ends the first and last slots are the open ends).`);
+          if (slots.some(w => !(w >= 5))) errors.push('Every slot must be at least 5 mm wide.');
+          const inner = p.ends === 'top' ? slots : slots.slice(1, -1);
+          if (inner.some(w => w < p.wall + 3)) errors.push(`Slots between two crests must be at least ${p.wall + 3} mm wide (wall thickness + 3 mm), otherwise the wall fills the slot.`);
+        }
         if (p.wall >= p.height) errors.push('Wall thickness must be smaller than the height.');
-        if (p.wall >= p.length / 2) errors.push('Wall thickness must be much smaller than the length.');
         if (p.foot >= p.wall / 2) errors.push(`Flat feet must be below half the wall thickness (max ${(p.wall / 2 - 0.25).toFixed(2)} mm).`);
+        if (errors.length) return { errors, warnings };
+        const lay = layout(p);
+        if (p.wall >= lay.length / 2) errors.push('Wall thickness must be much smaller than the length.');
+        if (!custom && lay.halves[0] * 2 < p.wall + 3) errors.push(`With ${p.waves} waves each slot is only ${(lay.halves[0] * 2).toFixed(1)} mm wide; use fewer waves or a longer rack.`);
         if (errors.length) return { errors, warnings };
 
         const r = p.wall / 2;
-        const lambda = (p.length - p.wall) / p.waves;
         const A = (p.height + p.foot - p.wall) / 2;
-        const k = 2 * Math.PI / lambda;
-        const minRadius = A > 0 ? 1 / (A * k * k) : Infinity; // tightest radius of the centerline (at crests/troughs)
+        // Interior crests and troughs may be tighter than the wall (their inner
+        // side is merged into a crease), but the two end caps need a clean
+        // offset, so the end half-waves limit the curvature.
+        const endHalf = Math.min(lay.halves[0], lay.halves[lay.halves.length - 1]);
+        const kEnd = Math.PI / endHalf;                    // equals 2π/λ for a uniform wave
+        const minRadius = A > 0 ? 1 / (A * kEnd * kEnd) : Infinity;
         const maxWall = Math.max(0, 2 * (minRadius - 0.3));
         if (minRadius <= r + 0.3) {
-          errors.push(`The wave is too tight for a ${p.wall} mm wall: the inner side of the crests would fold over. ` +
-            `Lower the height, use fewer waves, make it longer, or reduce the wall to ${Math.floor(maxWall * 2) / 2} mm or less.`);
+          const minEnd = Math.ceil(Math.PI * Math.sqrt(A * (r + 0.3)));
+          errors.push(custom
+            ? `The ${p.ends === 'top' ? 'outer' : 'open end'} slots are too narrow for a ${p.wall} mm wall: the end caps would fold over. ` +
+              `Make them at least ${p.ends === 'top' ? minEnd * 2 : minEnd} mm wide, lower the height, or reduce the wall to ${Math.floor(maxWall * 2) / 2} mm or less.`
+            : `The wave is too tight for a ${p.wall} mm wall: the inner side of the crests would fold over. ` +
+              `Lower the height, use fewer waves, make it longer, or reduce the wall to ${Math.floor(maxWall * 2) / 2} mm or less.`);
         }
+        const k = Math.PI / lay.minHalf;
         const slopeDeg = Math.atan(A * k) * 180 / Math.PI;
-        if (slopeDeg > 75) warnings.push(`Very steep flanks (${slopeDeg.toFixed(0)}°). Boards may rest only on the tips; consider a lower height or fewer waves.`);
-        if (lambda < 25) warnings.push(`Slot pitch is only ${lambda.toFixed(1)} mm, which is narrow for cutting boards.`);
+        if (slopeDeg > 75) warnings.push(`Very steep flanks (${slopeDeg.toFixed(0)}°). Boards may rest only on the tips; consider a lower height or wider slots.`);
+        if (lay.minHalf * 2 < 25) warnings.push(`The narrowest slot is only ${(lay.minHalf * 2).toFixed(1)} mm wide, which is narrow for cutting boards.`);
         if (p.depth > 250) warnings.push(`Print height ${p.depth} mm: check that your printer's Z travel allows this.`);
-        return { errors, warnings, lambda, slopeDeg, minRadius, maxWall };
+        return { errors, warnings, lambda: lay.minHalf * 2, slopeDeg, minRadius, maxWall, length: lay.length, crests: lay.crests };
       }
 
       function clipPolylineAboveZero(pts) {
@@ -360,28 +443,111 @@
         return out;
       }
 
+      function segmentIntersection(a, b, c, d) {
+        const rx = b[0] - a[0], rz = b[1] - a[1], sx = d[0] - c[0], sz = d[1] - c[1];
+        const den = rx * sz - rz * sx;
+        if (Math.abs(den) < 1e-12) return null;
+        const qx = c[0] - a[0], qz = c[1] - a[1];
+        const t = (qx * sz - qz * sx) / den, u = (qx * rz - qz * rx) / den;
+        const eps = 1e-9;
+        if (t <= eps || t >= 1 - eps || u <= eps || u >= 1 - eps) return null;
+        return [a[0] + rx * t, a[1] + rz * t];
+      }
+
+      // When the centerline bends tighter than the wall thickness, the inner
+      // offset folds back on itself around the extremum at index iExt. This
+      // finds where the two branches cross and merges the folded part into
+      // that single crease point. Returns false if no crossing exists.
+      function mergeFold(pts, iFrom, iTo) {
+        for (let pass = 0; pass < 4; pass++) {
+          let folded = false;
+          for (let i = iFrom; i < iTo; i++) if (pts[i + 1][0] < pts[i][0] - 1e-9) { folded = true; break; }
+          if (!folded) return true;
+          // Earliest segment that is crossed by a later, non-adjacent segment;
+          // for that one take the latest crossing so the whole loop collapses.
+          let hit = null;
+          for (let a = iFrom; a < iTo && !hit; a++) {
+            for (let b = iTo; b > a + 1; b--) {
+              const X = segmentIntersection(pts[a], pts[a + 1], pts[b - 1], pts[b]);
+              if (X) { hit = { a, b, X }; break; }
+            }
+          }
+          if (!hit) {
+            // No crossing: the fold is smaller than the sampling. If it is a
+            // tiny excursion, collapse the backward points; otherwise give up.
+            let frontier = -Infinity, excursion = 0;
+            for (let i = iFrom; i <= iTo; i++) {
+              excursion = Math.max(excursion, frontier - pts[i][0]);
+              frontier = Math.max(frontier, pts[i][0]);
+            }
+            if (excursion > 0.5) return false;
+            frontier = pts[iFrom][0];
+            for (let i = iFrom + 1; i <= iTo; i++) {
+              if (pts[i][0] < frontier - 1e-9) pts[i] = pts[i - 1];
+              else frontier = pts[i][0];
+            }
+            return true;
+          }
+          for (let i = hit.a + 1; i <= hit.b - 1; i++) pts[i] = hit.X;
+        }
+        return false;
+      }
+
+      // Human-readable position of extremum e (see layout() for the order).
+      function describeExtremum(p, e, crest) {
+        const top = p.ends === 'top';
+        if (crest) {
+          const left = top ? e / 2 : (e + 1) / 2;
+          return `crest between slots ${left} and ${left + 1}`;
+        }
+        return `trough of slot ${top ? (e + 1) / 2 : e / 2 + 1}`;
+      }
+
       function buildProfile(p) {
         const r = p.wall / 2;
-        const span = p.length - p.wall;         // centerline extent (caps add r on each side)
-        const lambda = span / p.waves;
-        const A = (p.height + p.foot - p.wall) / 2;
-        const k = 2 * Math.PI / lambda;
-        const sign = p.ends === 'top' ? -1 : 1;
-        const N = Math.max(8, Math.round(p.waves * p.segments));
+        const lay = layout(p);
+        const { halves, span } = lay;             // centerline extent (caps add r on each side)
+        const zLow = r - p.foot;                  // trough centerline (bottom touches z = -foot, clamped to 0)
+        const zHigh = p.height - r;               // crest centerline (top touches z = height)
         const m = Math.max(6, Math.round(p.segments / 3)); // cap segments
+        const avgHalf = span / halves.length;
 
         const C = [], T = [], B = [], normals = [];
-        for (let i = 0; i <= N; i++) {
-          const x = r + span * i / N;
-          const u = (x - r) * k;
-          const zc = r + A * (1 - sign * Math.cos(u)) - p.foot;
-          const dz = A * sign * k * Math.sin(u);
+        const addPoint = (x, zc, dz) => {
           const len = Math.hypot(1, dz);
           const nx = -dz / len, nz = 1 / len;
           C.push([x, zc]);
           normals.push([nx, nz]);
           T.push([x + nx * r, zc + nz * r]);
           B.push([x - nx * r, Math.max(0, zc - nz * r)]);
+        };
+        let x0 = r;
+        let up = p.ends !== 'top';                // first half-wave rises from a trough, or falls from a crest
+        const extrema = [{ index: 0, crest: !up }];
+        halves.forEach((w, j) => {
+          const za = up ? zLow : zHigh, zb = up ? zHigh : zLow;
+          const n = Math.max(16, Math.round(p.segments / 2 * w / avgHalf));
+          const first = j === 0 ? 0 : 1;          // shared point between halves is added once
+          for (let i = first; i <= n; i++) {
+            // Cosine-spaced samples: dense around the crest/trough where the
+            // curvature is highest, coarser on the nearly straight flank.
+            const s = w * (1 - Math.cos(Math.PI * i / n)) / 2;
+            const u = Math.PI * s / w;
+            addPoint(x0 + s, za + (zb - za) * (1 - Math.cos(u)) / 2, (zb - za) * Math.PI / (2 * w) * Math.sin(u));
+          }
+          x0 += w;
+          extrema.push({ index: C.length - 1, crest: up });
+          up = !up;
+        });
+        const N = C.length - 1;
+
+        // Interior crests fold on the bottom side, interior troughs on the top
+        // side, when the wave is tighter than the wall. Merge those folds.
+        const issues = [];
+        for (let e = 1; e < extrema.length - 1; e++) {
+          const side = extrema[e].crest ? B : T;
+          const ok = mergeFold(side, extrema[e - 1].index, extrema[e + 1].index);
+          if (!ok) issues.push(`The ${describeExtremum(p, e, extrema[e].crest)} is far too tight for this height and wall thickness.`);
         }
 
         // End cap (right): from B_N around +tangent to T_N
@@ -443,7 +609,16 @@
         }
         area /= 2;
 
-        return { loop, tris, area, lambda, amplitude: A, slopeDeg: Math.atan(A * k) * 180 / Math.PI };
+        const A = (zHigh - zLow) / 2;
+        return { loop, tris, area, issues, lambda: lay.minHalf * 2, slots: slotWidths(p, lay), crests: lay.crests, length: lay.length,
+          amplitude: A, slopeDeg: Math.atan(A * Math.PI / lay.minHalf) * 180 / Math.PI };
+      }
+
+      // Slot widths left to right (crest to crest; open end slots end to crest).
+      function slotWidths(p, lay = layout(p)) {
+        if (p.mode === 'custom') return (p.slots || []).map(Number);
+        const w = lay.halves[0] * 2;
+        return p.ends === 'top' ? new Array(p.waves).fill(w) : [w / 2, ...new Array(Math.max(0, p.waves - 1)).fill(w), w / 2];
       }
 
       function buildMesh(p) {
@@ -500,9 +675,12 @@
           normals,
           triangles: triCount,
           volume: profile.area * D,
+          issues: profile.issues,
           lambda: profile.lambda,
+          slots: profile.slots,
+          crests: profile.crests,
           slopeDeg: profile.slopeDeg,
-          bounds: { x: p.length, y: D, z: p.height }
+          bounds: { x: profile.length, y: D, z: p.height }
         };
       }
 
@@ -553,7 +731,7 @@
         return buffer;
       }
 
-      return { DEFAULTS, validate, buildProfile, buildMesh, toPrintOrientation, toBinarySTL };
+      return { DEFAULTS, layout, effectiveLength, slotWidths, validate, buildProfile, buildMesh, toPrintOrientation, toBinarySTL };
     })();
     if (typeof module !== 'undefined' && module.exports) module.exports = WaveGeometry;
   </script>
@@ -575,6 +753,8 @@
 
       let viewMode = 'standing';
       let currentMesh = null;
+      let mode = 'uniform';
+      let slots = [];
 
       // ----- Parameters <-> UI <-> URL ---------------------------------
       function readParams() {
@@ -582,6 +762,8 @@
         for (const key of numericKeys) p[key] = parseFloat(inputs[key].value);
         p.ends = inputs.ends.value === 'top' ? 'top' : 'floor';
         p.segments = parseInt(inputs.segments.value, 10) || 48;
+        p.mode = mode;
+        p.slots = slots.map(Number);
         return p;
       }
 
@@ -592,6 +774,69 @@
         }
         inputs.ends.value = p.ends;
         inputs.segments.value = String(p.segments);
+        mode = p.mode === 'custom' ? 'custom' : 'uniform';
+        slots = (p.slots || []).map(Number);
+        renderSlots();
+        applyMode();
+      }
+
+      // ----- Slot editor -------------------------------------------------
+      const slotList = $('slotList');
+
+      function slotLabel(i) {
+        const open = inputs.ends.value !== 'top' && (i === 0 || i === slots.length - 1) && slots.length > 1;
+        return `<span class="slot-name">Slot ${i + 1}${open ? '<small>open end</small>' : ''}</span>`;
+      }
+
+      function renderSlots() {
+        slotList.innerHTML = '';
+        const minSlots = inputs.ends.value === 'top' ? 1 : 2;
+        slots.forEach((w, i) => {
+          const row = document.createElement('div');
+          row.className = 'slot-row';
+          row.innerHTML = `${slotLabel(i)}<input type="number" min="5" max="500" step="1" value="${w}" aria-label="Slot ${i + 1} width in mm"><button type="button" aria-label="Remove slot ${i + 1}" title="Remove slot">&times;</button>`;
+          const input = row.querySelector('input');
+          input.addEventListener('input', () => {
+            const v = parseFloat(input.value);
+            if (!Number.isFinite(v)) return;
+            slots[i] = v;
+            update(true);
+          });
+          const remove = row.querySelector('button');
+          remove.disabled = slots.length <= minSlots;
+          remove.addEventListener('click', () => { slots.splice(i, 1); renderSlots(); update(true); });
+          slotList.appendChild(row);
+        });
+      }
+
+      function seedSlotsFromUniform() {
+        const p = readParams();
+        const lay = G.layout({ ...p, mode: 'uniform' });
+        slots = G.slotWidths({ ...p, mode: 'uniform' }, lay).map(w => Math.round(w));
+      }
+
+      function addSlot(factor) {
+        const inner = slots.filter((_, i) => inputs.ends.value === 'top' || (i > 0 && i < slots.length - 1));
+        const base = inner.length ? inner[inner.length - 1] : (slots.length ? slots[slots.length - 1] * 2 : 70);
+        const w = Math.round(base * factor);
+        // Keep the open end slots at the ends: insert before the last one.
+        if (inputs.ends.value !== 'top' && slots.length >= 2) slots.splice(slots.length - 1, 0, w);
+        else slots.push(w);
+        renderSlots();
+        update(true);
+      }
+
+      function applyMode() {
+        const custom = mode === 'custom';
+        $('modeUniform').classList.toggle('active', !custom);
+        $('modeCustom').classList.toggle('active', custom);
+        $('wavesField').hidden = custom;
+        $('slotsField').hidden = !custom;
+        $('lengthField').classList.toggle('derived', custom);
+        $('lengthHelp').hidden = !custom;
+        $('lengthUnit').textContent = custom ? 'mm · derived' : 'mm · along the wave';
+        inputs.length.disabled = custom;
+        ranges.length.disabled = custom;
       }
 
       function paramsFromHash() {
@@ -607,11 +852,14 @@
         if (q.get('e') === 'top') p.ends = 'top';
         const s = parseInt(q.get('s'), 10);
         if ([24, 48, 96, 160].includes(s)) p.segments = s;
+        const w = (q.get('w') || '').split(',').map(Number).filter(v => Number.isFinite(v) && v > 0);
+        if (w.length) { p.mode = 'custom'; p.slots = w; }
         return p;
       }
 
       function hashFromParams(p) {
-        return `#l=${p.length}&d=${p.depth}&h=${p.height}&n=${p.waves}&t=${p.wall}&f=${p.foot}&e=${p.ends}&s=${p.segments}`;
+        const base = `#l=${p.length}&d=${p.depth}&h=${p.height}&n=${p.waves}&t=${p.wall}&f=${p.foot}&e=${p.ends}&s=${p.segments}`;
+        return p.mode === 'custom' ? `${base}&w=${p.slots.join(',')}` : base;
       }
 
       // ----- Minimal WebGL renderer --------------------------------------
@@ -852,23 +1100,30 @@
       function update(refit = false) {
         const p = readParams();
         const check = G.validate(p);
+        if (p.mode === 'custom' && !check.errors.length) {
+          p.length = Math.round(check.length * 100) / 100;
+          inputs.length.value = p.length;
+          ranges.length.value = p.length;
+        }
         history.replaceState(null, '', hashFromParams(p));
 
         const footMax = Math.max(0, p.wall / 2 - 0.25);
         ranges.foot.max = Math.min(4, footMax);
 
-        if (check.errors.length) {
+        const fail = (text) => {
           message.className = 'msg error';
-          message.textContent = check.errors.join(' ');
+          message.textContent = text;
           downloadBtn.disabled = true;
           currentMesh = null;
-          return;
-        }
+          for (const id of ['statPitch', 'statSlope', 'statFootprint', 'statPrintHeight', 'statVolume', 'statTriangles']) $(id).textContent = '–';
+        };
+        if (check.errors.length) return fail(check.errors.join(' '));
         message.className = check.warnings.length ? 'msg warn' : 'msg';
         message.textContent = check.warnings.join(' ');
         downloadBtn.disabled = false;
 
         currentMesh = G.buildMesh(p);
+        if (currentMesh.issues.length) return fail(currentMesh.issues.join(' '));
         const shown = viewMode === 'print' ? G.toPrintOrientation(currentMesh) : currentMesh;
         if (renderer) {
           renderer.setMesh(shown);
@@ -876,9 +1131,12 @@
           renderer.requestRender();
         }
 
-        $('statPitch').textContent = `${fmt(currentMesh.lambda)} mm`;
+        const uniq = [...new Set(currentMesh.slots.map(w => fmt(w)))];
+        $('statPitch').textContent = p.mode === 'custom' && uniq.length > 1
+          ? `${currentMesh.slots.map(w => fmt(w, 0)).join(' · ')} mm`
+          : `${fmt(currentMesh.lambda)} mm`;
         $('statSlope').textContent = `${fmt(currentMesh.slopeDeg, 0)}°`;
-        $('statFootprint').textContent = `${fmt(p.length)} × ${fmt(p.height)} mm`;
+        $('statFootprint').textContent = `${fmt(currentMesh.bounds.x)} × ${fmt(p.height)} mm`;
         $('statPrintHeight').textContent = `${fmt(p.depth)} mm`;
         const cm3 = currentMesh.volume / 1000;
         $('statVolume').textContent = `${fmt(cm3)} cm³ · ~${fmt(cm3 * 1.24 * 0.55, 0)} g PLA`;
@@ -894,7 +1152,10 @@
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `wave-rack_${p.length}x${p.depth}x${p.height}mm_${p.waves}waves.stl`;
+        const L = Math.round(currentMesh.bounds.x);
+        a.download = p.mode === 'custom'
+          ? `wave-rack_${L}x${p.depth}x${p.height}mm_slots-${p.slots.map(w => Math.round(w)).join('-')}.stl`
+          : `wave-rack_${L}x${p.depth}x${p.height}mm_${p.waves}waves.stl`;
         document.body.appendChild(a);
         a.click();
         a.remove();
@@ -910,10 +1171,19 @@
           update(true);
         });
       }
-      inputs.ends.addEventListener('change', () => update(false));
+      inputs.ends.addEventListener('change', () => { renderSlots(); update(false); });
+      $('modeUniform').addEventListener('click', () => { mode = 'uniform'; applyMode(); update(true); });
+      $('modeCustom').addEventListener('click', () => {
+        mode = 'custom';
+        if (!slots.length) { seedSlotsFromUniform(); renderSlots(); }
+        applyMode();
+        update(true);
+      });
+      $('addSlot').addEventListener('click', () => addSlot(1));
+      $('addWideSlot').addEventListener('click', () => addSlot(1.5));
       inputs.segments.addEventListener('change', () => update(false));
       downloadBtn.addEventListener('click', downloadSTL);
-      $('resetBtn').addEventListener('click', () => { writeParams({ ...G.DEFAULTS }); update(true); });
+      $('resetBtn').addEventListener('click', () => { writeParams({ ...G.DEFAULTS, slots: [] }); update(true); });
 
       const viewButtons = { standing: $('viewStanding'), print: $('viewPrint') };
       for (const [mode, btn] of Object.entries(viewButtons)) {

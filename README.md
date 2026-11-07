@@ -50,6 +50,7 @@
 * **Description:** Generates a parametric, wave-shaped rack for cutting boards, plates, lids or books as a print-ready binary STL. The part is exported lying on its side so every layer contains the whole curve &mdash; strong layer lines and no supports. Zero dependencies: geometry, WebGL preview and STL export are hand-written in a single HTML file.
 * **Key Capabilities:**
   * **Four main parameters:** length, depth (print height), height and number of waves, plus fine tuning for wall thickness, flat feet, end shape and resolution.
+  * **Custom slot widths:** switch to per-slot widths (e.g. wide slots for thick boards, narrow ones for thin boards); the length is derived. Crests and troughs between narrow slots get a clean inner crease instead of a self-intersecting offset.
   * **Constant-thickness sine ribbon:** true normal offset with rounded end caps; too-tight combinations are detected and the maximum wall thickness is suggested.
   * **Live 3D preview:** orbit, zoom and pinch; switch between "in use" and "on the print bed" orientation.
   * **Watertight STL export:** every edge is shared by exactly two triangles, with slot pitch, slope, volume and weight estimate shown live.
