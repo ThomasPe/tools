@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Generate a 3D-printable wave-shaped rack for cutting boards, plates or books. Configure length, depth, height and wave count, preview it live and download a print-ready STL. Runs 100% in your browser.">
+  <title>Wave Rack Generator | pentenrieder.dev</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --background: #0b1020;
+      --surface: #151d30;
+      --surface-raised: #1c2740;
+      --border: #2a3854;
+      --text: #edf3ff;
+      --muted: #9aabc5;
+      --accent: #71d9c2;
+      --accent-dark: #09251f;
+      --danger: #ff9a9a;
+      --warn: #ffd27a;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      min-height: 100vh;
+      margin: 0;
+      padding: 32px 20px;
+      color: var(--text);
+      background: radial-gradient(ellipse at top left, #1c2a42, var(--background) 55%);
+    }
+
+    button, input, select { font: inherit; }
+    a { color: var(--accent); }
+
+    .shell { width: min(1180px, 100%); margin: 0 auto; }
+    .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
+    .brand, .back-link { color: var(--muted); text-decoration: none; font-size: 14px; }
+    .back-link { padding: 8px 13px; border: 1px solid var(--border); border-radius: 999px; }
+    header { margin-bottom: 28px; }
+    .eyebrow { color: var(--accent); font-size: 12px; font-weight: 700; letter-spacing: .13em; text-transform: uppercase; }
+    h1 { margin: 8px 0; font-size: clamp(32px, 6vw, 48px); letter-spacing: -.04em; }
+    header p { max-width: 720px; margin: 0; color: var(--muted); line-height: 1.65; }
+
+    .layout { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 18px; align-items: start; }
+    @media (max-width: 860px) { .layout { grid-template-columns: 1fr; } }
+
+    .card {
+      padding: 22px;
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      background: rgba(21, 29, 48, .9);
+      box-shadow: 0 16px 48px rgba(0, 0, 0, .18);
+    }
+
+    h2 { margin: 0 0 14px; font-size: 16px; }
+    .field { margin-bottom: 14px; }
+    .field-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+    .field label { font-size: 13px; font-weight: 600; }
+    .field .unit { color: var(--muted); font-size: 12px; }
+    .field-row { display: grid; grid-template-columns: 1fr 78px; gap: 10px; align-items: center; }
+    input[type="range"] { width: 100%; accent-color: var(--accent); }
+    input[type="number"], select {
+      width: 100%;
+      padding: 7px 9px;
+      color: var(--text);
+      background: var(--surface-raised);
+      border: 1px solid var(--border);
+      border-radius: 9px;
+    }
+    input[type="number"]:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: transparent; }
+    .help { margin: 4px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+
+    details { margin-top: 6px; border-top: 1px solid var(--border); padding-top: 12px; }
+    summary { cursor: pointer; color: var(--muted); font-size: 13px; font-weight: 600; margin-bottom: 12px; user-select: none; }
+    summary:hover { color: var(--text); }
+
+    .actions { display: grid; gap: 10px; margin-top: 18px; }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      padding: 12px 16px;
+      border: 1px solid transparent;
+      border-radius: 12px;
+      cursor: pointer;
+      font-weight: 700;
+      transition: transform .12s ease, filter .12s ease;
+    }
+    .btn:active { transform: translateY(1px); }
+    .btn-primary { color: #06201a; background: var(--accent); }
+    .btn-primary:hover { filter: brightness(1.08); }
+    .btn-primary:disabled { cursor: not-allowed; opacity: .45; filter: none; }
+    .btn-ghost { color: var(--text); background: transparent; border-color: var(--border); }
+    .btn-ghost:hover { background: var(--surface-raised); }
+
+    .msg { margin-top: 12px; padding: 10px 12px; border-radius: 10px; font-size: 13px; line-height: 1.5; }
+    .msg:empty { display: none; }
+    .msg.error { color: var(--danger); background: rgba(255, 154, 154, .1); border: 1px solid rgba(255, 154, 154, .3); }
+    .msg.warn { color: var(--warn); background: rgba(255, 210, 122, .08); border: 1px solid rgba(255, 210, 122, .3); }
+
+    .viewer { position: relative; }
+    .viewer canvas {
+      display: block;
+      width: 100%;
+      height: min(62vh, 640px);
+      min-height: 320px;
+      border-radius: 14px;
+      background: radial-gradient(ellipse at 50% 20%, #1b2740, #0a0f1d 80%);
+      touch-action: none;
+      cursor: grab;
+    }
+    .viewer canvas:active { cursor: grabbing; }
+    .viewer-bar { display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 999px; overflow: hidden; }
+    .seg button { padding: 7px 14px; border: 0; background: transparent; color: var(--muted); cursor: pointer; font-size: 13px; font-weight: 600; }
+    .seg button.active { background: var(--accent); color: #06201a; }
+    .hint { color: var(--muted); font-size: 13px; }
+
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 14px; }
+    .stat { padding: 10px 12px; border-radius: 10px; background: var(--surface-raised); }
+    .stat-label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
+    .stat-value { margin-top: 3px; font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+    .notes { margin-top: 18px; }
+    .notes h2 { font-size: 15px; }
+    .notes ul { margin: 0; padding-left: 18px; color: var(--muted); font-size: 13px; line-height: 1.7; }
+    .notes strong { color: var(--text); }
+
+    footer { margin-top: 36px; color: var(--muted); font-size: 13px; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <nav class="topbar">
+      <a class="brand" href="https://pentenrieder.dev">pentenrieder.dev</a>
+      <a class="back-link" href="../">&larr; All tools</a>
+    </nav>
+
+    <header>
+      <div class="eyebrow">3D Printing / CAD</div>
+      <h1>Wave Rack Generator</h1>
+      <p>
+        A parametric, wave-shaped rack for cutting boards, plates, lids or books. Set length, depth, height and the number of waves,
+        check the live preview and download a print-ready STL. The part is exported lying on its side so every layer follows the
+        curve &mdash; strong layer lines, no supports, nothing leaves your browser.
+      </p>
+    </header>
+
+    <div class="layout">
+      <section class="card" aria-label="Parameters">
+        <h2>Dimensions</h2>
+
+        <div class="field">
+          <div class="field-head"><label for="length">Length</label><span class="unit">mm &middot; along the wave</span></div>
+          <div class="field-row">
+            <input type="range" id="lengthRange" min="80" max="600" step="1">
+            <input type="number" id="length" min="40" max="1000" step="1">
+          </div>
+        </div>
+
+        <div class="field">
+          <div class="field-head"><label for="depth">Depth</label><span class="unit">mm &middot; print height</span></div>
+          <div class="field-row">
+            <input type="range" id="depthRange" min="30" max="300" step="1">
+            <input type="number" id="depth" min="10" max="500" step="1">
+          </div>
+          <p class="help">How deep the boards sit in the rack. This becomes the Z height of the print.</p>
+        </div>
+
+        <div class="field">
+          <div class="field-head"><label for="height">Height</label><span class="unit">mm &middot; crest top</span></div>
+          <div class="field-row">
+            <input type="range" id="heightRange" min="15" max="200" step="1">
+            <input type="number" id="height" min="10" max="400" step="1">
+          </div>
+        </div>
+
+        <div class="field">
+          <div class="field-head"><label for="waves">Waves</label><span class="unit">count &middot; frequency</span></div>
+          <div class="field-row">
+            <input type="range" id="wavesRange" min="1" max="12" step="1">
+            <input type="number" id="waves" min="1" max="40" step="1">
+          </div>
+          <p class="help">Number of crests. Each crest separates two slots.</p>
+        </div>
+
+        <details>
+          <summary>Fine tuning</summary>
+
+          <div class="field">
+            <div class="field-head"><label for="wall">Wall thickness</label><span class="unit">mm</span></div>
+            <div class="field-row">
+              <input type="range" id="wallRange" min="2" max="14" step="0.5">
+              <input type="number" id="wall" min="1" max="40" step="0.5">
+            </div>
+          </div>
+
+          <div class="field">
+            <div class="field-head"><label for="foot">Flat feet</label><span class="unit">mm</span></div>
+            <div class="field-row">
+              <input type="range" id="footRange" min="0" max="4" step="0.25">
+              <input type="number" id="foot" min="0" max="20" step="0.25">
+            </div>
+            <p class="help">Trims the bottom of each trough by this amount so the rack stands on small flat pads instead of a tangent line. 0 keeps the pure curve.</p>
+          </div>
+
+          <div class="field">
+            <div class="field-head"><label for="ends">Ends</label></div>
+            <select id="ends">
+              <option value="floor">Troughs at both ends (rests on the floor)</option>
+              <option value="top">Crests at both ends (raised ends)</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <div class="field-head"><label for="segments">Smoothness</label><span class="unit">segments per wave</span></div>
+            <select id="segments">
+              <option value="24">Draft (24)</option>
+              <option value="48" selected>Standard (48)</option>
+              <option value="96">Fine (96)</option>
+              <option value="160">Ultra (160)</option>
+            </select>
+          </div>
+        </details>
+
+        <div class="actions">
+          <button class="btn btn-primary" id="downloadBtn" type="button">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 3v12"></path><polyline points="6 11 12 17 18 11"></polyline><path d="M4 21h16"></path></svg>
+            Download STL
+          </button>
+          <button class="btn btn-ghost" id="resetBtn" type="button">Reset to defaults</button>
+        </div>
+        <div class="msg" id="message"></div>
+      </section>
+
+      <section class="card viewer" aria-label="Preview">
+        <div class="viewer-bar">
+          <div class="seg" role="group" aria-label="View orientation">
+            <button type="button" id="viewStanding" class="active">In use</button>
+            <button type="button" id="viewPrint">On the print bed</button>
+          </div>
+          <span class="hint">Drag to orbit &middot; scroll or pinch to zoom</span>
+        </div>
+        <canvas id="viewport"></canvas>
+
+        <div class="stats">
+          <div class="stat"><div class="stat-label">Slot pitch</div><div class="stat-value" id="statPitch">&ndash;</div></div>
+          <div class="stat"><div class="stat-label">Max. slope</div><div class="stat-value" id="statSlope">&ndash;</div></div>
+          <div class="stat"><div class="stat-label">Bed footprint</div><div class="stat-value" id="statFootprint">&ndash;</div></div>
+          <div class="stat"><div class="stat-label">Print height</div><div class="stat-value" id="statPrintHeight">&ndash;</div></div>
+          <div class="stat"><div class="stat-label">Volume</div><div class="stat-value" id="statVolume">&ndash;</div></div>
+          <div class="stat"><div class="stat-label">Triangles</div><div class="stat-value" id="statTriangles">&ndash;</div></div>
+        </div>
+
+        <div class="notes">
+          <h2>Printing notes</h2>
+          <ul>
+            <li><strong>Orientation:</strong> the STL is already lying on its side (wave profile on the bed, depth = Z). Just import and slice.</li>
+            <li><strong>No supports:</strong> the part is a straight vertical extrusion, so there are no overhangs at all.</li>
+            <li><strong>Adhesion:</strong> the footprint is a thin, curvy wall. Use a brim (5&ndash;8 mm) for tall prints and keep the first layer slow.</li>
+            <li><strong>Strength:</strong> because every layer contains the whole wave, bending loads are carried inside the layers rather than across them. 3&ndash;4 perimeters recommended.</li>
+          </ul>
+        </div>
+      </section>
+    </div>
+
+    <footer>
+      100% client-side &middot; no uploads, no tracking &middot; <a href="https://pentenrieder.dev">Thomas Pentenrieder</a>
+    </footer>
+  </div>
+
+  <script id="wave-geometry">
+    // ---------------------------------------------------------------------
+    // Geometry: a sine-wave ribbon of constant wall thickness, extruded along
+    // the depth axis. Coordinates in "use" orientation: X = length,
+    // Y = depth (into the rack), Z = height (up).
+    // ---------------------------------------------------------------------
+    const WaveGeometry = (() => {
+      const DEFAULTS = Object.freeze({
+        length: 300,
+        depth: 120,
+        height: 60,
+        waves: 4,
+        wall: 5,
+        foot: 1,
+        ends: 'floor',
+        segments: 48
+      });
+
+      function validate(p) {
+        const errors = [];
+        const warnings = [];
+        if (!(p.length > 0) || !(p.depth > 0) || !(p.height > 0) || !(p.wall > 0) || !(p.waves >= 1)) {
+          errors.push('All dimensions must be positive numbers.');
+          return { errors, warnings };
+        }
+        if (p.wall >= p.height) errors.push('Wall thickness must be smaller than the height.');
+        if (p.wall >= p.length / 2) errors.push('Wall thickness must be much smaller than the length.');
+        if (p.foot >= p.wall / 2) errors.push(`Flat feet must be below half the wall thickness (max ${(p.wall / 2 - 0.25).toFixed(2)} mm).`);
+        if (errors.length) return { errors, warnings };
+
+        const r = p.wall / 2;
+        const lambda = (p.length - p.wall) / p.waves;
+        const A = (p.height + p.foot - p.wall) / 2;
+        const k = 2 * Math.PI / lambda;
+        const minRadius = A > 0 ? 1 / (A * k * k) : Infinity; // tightest radius of the centerline (at crests/troughs)
+        const maxWall = Math.max(0, 2 * (minRadius - 0.3));
+        if (minRadius <= r + 0.3) {
+          errors.push(`The wave is too tight for a ${p.wall} mm wall: the inner side of the crests would fold over. ` +
+            `Lower the height, use fewer waves, make it longer, or reduce the wall to ${Math.floor(maxWall * 2) / 2} mm or less.`);
+        }
+        const slopeDeg = Math.atan(A * k) * 180 / Math.PI;
+        if (slopeDeg > 75) warnings.push(`Very steep flanks (${slopeDeg.toFixed(0)}°). Boards may rest only on the tips; consider a lower height or fewer waves.`);
+        if (lambda < 25) warnings.push(`Slot pitch is only ${lambda.toFixed(1)} mm, which is narrow for cutting boards.`);
+        if (p.depth > 250) warnings.push(`Print height ${p.depth} mm: check that your printer's Z travel allows this.`);
+        return { errors, warnings, lambda, slopeDeg, minRadius, maxWall };
+      }
+
+      function clipPolylineAboveZero(pts) {
+        // Clips an open polyline to z >= 0 and returns its interior points
+        // (the first and last input points are handled by the caller).
+        const out = [];
+        const push = (q) => {
+          const last = out[out.length - 1];
+          if (last && Math.abs(last[0] - q[0]) < 1e-9 && Math.abs(last[1] - q[1]) < 1e-9) return;
+          out.push(q);
+        };
+        for (let i = 0; i < pts.length - 1; i++) {
+          const a = pts[i], b = pts[i + 1];
+          const ain = a[1] >= 0, bin = b[1] >= 0;
+          if (i > 0 && ain) push(a);
+          if (ain !== bin) {
+            const s = a[1] / (a[1] - b[1]);
+            push([a[0] + (b[0] - a[0]) * s, 0]);
+          }
+        }
+        return out;
+      }
+
+      function buildProfile(p) {
+        const r = p.wall / 2;
+        const span = p.length - p.wall;         // centerline extent (caps add r on each side)
+        const lambda = span / p.waves;
+        const A = (p.height + p.foot - p.wall) / 2;
+        const k = 2 * Math.PI / lambda;
+        const sign = p.ends === 'top' ? -1 : 1;
+        const N = Math.max(8, Math.round(p.waves * p.segments));
+        const m = Math.max(6, Math.round(p.segments / 3)); // cap segments
+
+        const C = [], T = [], B = [], normals = [];
+        for (let i = 0; i <= N; i++) {
+          const x = r + span * i / N;
+          const u = (x - r) * k;
+          const zc = r + A * (1 - sign * Math.cos(u)) - p.foot;
+          const dz = A * sign * k * Math.sin(u);
+          const len = Math.hypot(1, dz);
+          const nx = -dz / len, nz = 1 / len;
+          C.push([x, zc]);
+          normals.push([nx, nz]);
+          T.push([x + nx * r, zc + nz * r]);
+          B.push([x - nx * r, Math.max(0, zc - nz * r)]);
+        }
+
+        // End cap (right): from B_N around +tangent to T_N
+        const thetaN = Math.atan2(normals[N][1], normals[N][0]);
+        const endArc = [[C[N][0] - normals[N][0] * r, C[N][1] - normals[N][1] * r]];
+        for (let j = 1; j < m; j++) {
+          const th = thetaN - Math.PI + Math.PI * j / m;
+          endArc.push([C[N][0] + r * Math.cos(th), C[N][1] + r * Math.sin(th)]);
+        }
+        endArc.push(T[N]);
+        const endInterior = clipPolylineAboveZero(endArc);
+
+        // Start cap (left): from T_0 around -tangent to B_0
+        const theta0 = Math.atan2(normals[0][1], normals[0][0]);
+        const startArc = [T[0]];
+        for (let j = 1; j < m; j++) {
+          const th = theta0 + Math.PI * j / m;
+          startArc.push([C[0][0] + r * Math.cos(th), C[0][1] + r * Math.sin(th)]);
+        }
+        startArc.push([C[0][0] - normals[0][0] * r, C[0][1] - normals[0][1] * r]);
+        const startInterior = clipPolylineAboveZero(startArc);
+
+        // Counter-clockwise outline (X right, Z up)
+        const loop = [];
+        const pushLoop = (q) => {
+          const last = loop[loop.length - 1];
+          if (last && Math.abs(last[0] - q[0]) < 1e-9 && Math.abs(last[1] - q[1]) < 1e-9) return;
+          loop.push(q);
+        };
+        for (let i = 0; i <= N; i++) pushLoop(B[i]);
+        endInterior.forEach(pushLoop);
+        for (let i = N; i >= 0; i--) pushLoop(T[i]);
+        startInterior.forEach(pushLoop);
+        const first = loop[0], last = loop[loop.length - 1];
+        if (Math.abs(first[0] - last[0]) < 1e-9 && Math.abs(first[1] - last[1]) < 1e-9) loop.pop();
+
+        // Triangulation of the profile (2D), as index-free coordinate triples.
+        const tris = [];
+        const tri = (a, b, c) => {
+          const area2 = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+          if (Math.abs(area2) < 1e-9) return;
+          tris.push(area2 > 0 ? [a, b, c] : [a, c, b]);
+        };
+        for (let i = 0; i < N; i++) {
+          tri(B[i], B[i + 1], T[i + 1]);
+          tri(B[i], T[i + 1], T[i]);
+        }
+        // Caps are convex, so a fan from a boundary vertex covers them and
+        // shares the chord edge with the strip (no T-junctions).
+        const endFan = [B[N], ...endInterior, T[N]];
+        for (let j = 1; j < endFan.length - 1; j++) tri(endFan[0], endFan[j], endFan[j + 1]);
+        const startFan = [T[0], ...startInterior, B[0]];
+        for (let j = 1; j < startFan.length - 1; j++) tri(startFan[0], startFan[j], startFan[j + 1]);
+
+        let area = 0;
+        for (let i = 0; i < loop.length; i++) {
+          const a = loop[i], b = loop[(i + 1) % loop.length];
+          area += a[0] * b[1] - b[0] * a[1];
+        }
+        area /= 2;
+
+        return { loop, tris, area, lambda, amplitude: A, slopeDeg: Math.atan(A * k) * 180 / Math.PI };
+      }
+
+      function buildMesh(p) {
+        const profile = buildProfile(p);
+        const { loop, tris } = profile;
+        const D = p.depth;
+        const n = loop.length;
+
+        // Outward edge normals and smoothed vertex normals (with creases).
+        const edgeN = new Array(n);
+        for (let i = 0; i < n; i++) {
+          const a = loop[i], b = loop[(i + 1) % n];
+          const dx = b[0] - a[0], dz = b[1] - a[1];
+          const len = Math.hypot(dx, dz) || 1;
+          edgeN[i] = [dz / len, -dx / len];
+        }
+        const creaseCos = Math.cos(40 * Math.PI / 180);
+        const vertN = new Array(n);
+        for (let i = 0; i < n; i++) {
+          const e0 = edgeN[(i - 1 + n) % n], e1 = edgeN[i];
+          const dot = e0[0] * e1[0] + e0[1] * e1[1];
+          if (dot < creaseCos) { vertN[i] = null; continue; }
+          const sx = e0[0] + e1[0], sz = e0[1] + e1[1];
+          const len = Math.hypot(sx, sz) || 1;
+          vertN[i] = [sx / len, sz / len];
+        }
+
+        const triCount = tris.length * 2 + n * 2;
+        const positions = new Float32Array(triCount * 9);
+        const normals = new Float32Array(triCount * 9);
+        let o = 0;
+        const put = (x, y, z, nx, ny, nz) => {
+          positions[o] = x; positions[o + 1] = y; positions[o + 2] = z;
+          normals[o] = nx; normals[o + 1] = ny; normals[o + 2] = nz;
+          o += 3;
+        };
+
+        // Front (y = 0, normal -Y) and back (y = D, normal +Y)
+        for (const [a, b, c] of tris) {
+          put(a[0], 0, a[1], 0, -1, 0); put(b[0], 0, b[1], 0, -1, 0); put(c[0], 0, c[1], 0, -1, 0);
+          put(a[0], D, a[1], 0, 1, 0); put(c[0], D, c[1], 0, 1, 0); put(b[0], D, b[1], 0, 1, 0);
+        }
+        // Side walls
+        for (let i = 0; i < n; i++) {
+          const a = loop[i], b = loop[(i + 1) % n];
+          const e = edgeN[i];
+          const na = vertN[i] || e, nb = vertN[(i + 1) % n] || e;
+          put(a[0], 0, a[1], na[0], 0, na[1]); put(b[0], D, b[1], nb[0], 0, nb[1]); put(b[0], 0, b[1], nb[0], 0, nb[1]);
+          put(a[0], 0, a[1], na[0], 0, na[1]); put(a[0], D, a[1], na[0], 0, na[1]); put(b[0], D, b[1], nb[0], 0, nb[1]);
+        }
+
+        return {
+          positions,
+          normals,
+          triangles: triCount,
+          volume: profile.area * D,
+          lambda: profile.lambda,
+          slopeDeg: profile.slopeDeg,
+          bounds: { x: p.length, y: D, z: p.height }
+        };
+      }
+
+      // Rotates "use" orientation into print orientation: profile flat on the
+      // bed (Z = 0), depth along Z. A +90° rotation about X plus a shift keeps
+      // winding and normals intact.
+      function toPrintOrientation(mesh) {
+        const H = mesh.bounds.z;
+        const src = mesh.positions, nrm = mesh.normals;
+        const positions = new Float32Array(src.length);
+        const normals = new Float32Array(nrm.length);
+        for (let i = 0; i < src.length; i += 3) {
+          positions[i] = src[i];
+          positions[i + 1] = H - src[i + 2];
+          positions[i + 2] = src[i + 1];
+          normals[i] = nrm[i];
+          normals[i + 1] = -nrm[i + 2];
+          normals[i + 2] = nrm[i + 1];
+        }
+        return { ...mesh, positions, normals, bounds: { x: mesh.bounds.x, y: H, z: mesh.bounds.y } };
+      }
+
+      function toBinarySTL(positions, header = 'Wave rack - tools.pentenrieder.dev') {
+        const triCount = positions.length / 9;
+        const buffer = new ArrayBuffer(84 + triCount * 50);
+        const view = new DataView(buffer);
+        const bytes = new Uint8Array(buffer);
+        const headerBytes = new TextEncoder().encode(header.slice(0, 80));
+        bytes.set(headerBytes, 0);
+        view.setUint32(80, triCount, true);
+        let off = 84;
+        for (let i = 0; i < positions.length; i += 9) {
+          const ax = positions[i], ay = positions[i + 1], az = positions[i + 2];
+          const bx = positions[i + 3], by = positions[i + 4], bz = positions[i + 5];
+          const cx = positions[i + 6], cy = positions[i + 7], cz = positions[i + 8];
+          const ux = bx - ax, uy = by - ay, uz = bz - az;
+          const vx = cx - ax, vy = cy - ay, vz = cz - az;
+          let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+          const len = Math.hypot(nx, ny, nz) || 1;
+          nx /= len; ny /= len; nz /= len;
+          view.setFloat32(off, nx, true); view.setFloat32(off + 4, ny, true); view.setFloat32(off + 8, nz, true);
+          view.setFloat32(off + 12, ax, true); view.setFloat32(off + 16, ay, true); view.setFloat32(off + 20, az, true);
+          view.setFloat32(off + 24, bx, true); view.setFloat32(off + 28, by, true); view.setFloat32(off + 32, bz, true);
+          view.setFloat32(off + 36, cx, true); view.setFloat32(off + 40, cy, true); view.setFloat32(off + 44, cz, true);
+          view.setUint16(off + 48, 0, true);
+          off += 50;
+        }
+        return buffer;
+      }
+
+      return { DEFAULTS, validate, buildProfile, buildMesh, toPrintOrientation, toBinarySTL };
+    })();
+    if (typeof module !== 'undefined' && module.exports) module.exports = WaveGeometry;
+  </script>
+
+  <script id="wave-app">
+    (() => {
+      const $ = (id) => document.getElementById(id);
+      const G = WaveGeometry;
+
+      const numericKeys = ['length', 'depth', 'height', 'waves', 'wall', 'foot'];
+      const inputs = {
+        length: $('length'), depth: $('depth'), height: $('height'), waves: $('waves'),
+        wall: $('wall'), foot: $('foot'), ends: $('ends'), segments: $('segments')
+      };
+      const ranges = {
+        length: $('lengthRange'), depth: $('depthRange'), height: $('heightRange'), waves: $('wavesRange'),
+        wall: $('wallRange'), foot: $('footRange')
+      };
+
+      let viewMode = 'standing';
+      let currentMesh = null;
+
+      // ----- Parameters <-> UI <-> URL ---------------------------------
+      function readParams() {
+        const p = {};
+        for (const key of numericKeys) p[key] = parseFloat(inputs[key].value);
+        p.ends = inputs.ends.value === 'top' ? 'top' : 'floor';
+        p.segments = parseInt(inputs.segments.value, 10) || 48;
+        return p;
+      }
+
+      function writeParams(p) {
+        for (const key of numericKeys) {
+          inputs[key].value = p[key];
+          ranges[key].value = p[key];
+        }
+        inputs.ends.value = p.ends;
+        inputs.segments.value = String(p.segments);
+      }
+
+      function paramsFromHash() {
+        const p = { ...G.DEFAULTS };
+        const hash = location.hash.replace(/^#/, '');
+        if (!hash) return p;
+        const q = new URLSearchParams(hash);
+        const map = { l: 'length', d: 'depth', h: 'height', n: 'waves', t: 'wall', f: 'foot' };
+        for (const [short, key] of Object.entries(map)) {
+          const v = parseFloat(q.get(short));
+          if (Number.isFinite(v) && v > 0) p[key] = v;
+        }
+        if (q.get('e') === 'top') p.ends = 'top';
+        const s = parseInt(q.get('s'), 10);
+        if ([24, 48, 96, 160].includes(s)) p.segments = s;
+        return p;
+      }
+
+      function hashFromParams(p) {
+        return `#l=${p.length}&d=${p.depth}&h=${p.height}&n=${p.waves}&t=${p.wall}&f=${p.foot}&e=${p.ends}&s=${p.segments}`;
+      }
+
+      // ----- Minimal WebGL renderer --------------------------------------
+      const canvas = $('viewport');
+      const gl = canvas.getContext('webgl', { antialias: true, alpha: false });
+      const renderer = gl ? createRenderer(gl) : null;
+      if (!renderer) {
+        canvas.replaceWith(Object.assign(document.createElement('p'), {
+          className: 'msg warn',
+          textContent: 'WebGL is not available in this browser. The STL download still works.'
+        }));
+      }
+
+      function createRenderer(gl) {
+        const compile = (type, src) => {
+          const s = gl.createShader(type);
+          gl.shaderSource(s, src);
+          gl.compileShader(s);
+          if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+          return s;
+        };
+        const link = (vs, fs) => {
+          const prog = gl.createProgram();
+          gl.attachShader(prog, compile(gl.VERTEX_SHADER, vs));
+          gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, fs));
+          gl.linkProgram(prog);
+          if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+          return prog;
+        };
+
+        const meshProg = link(`
+          attribute vec3 aPos; attribute vec3 aNrm;
+          uniform mat4 uVP;
+          varying vec3 vN; varying vec3 vP;
+          void main() { vN = aNrm; vP = aPos; gl_Position = uVP * vec4(aPos, 1.0); }
+        `, `
+          precision mediump float;
+          varying vec3 vN; varying vec3 vP;
+          uniform vec3 uColor; uniform vec3 uEye; uniform vec3 uLight;
+          void main() {
+            vec3 n = normalize(vN);
+            vec3 v = normalize(uEye - vP);
+            vec3 l = normalize(uLight);
+            float diff = max(dot(n, l), 0.0);
+            float hemi = 0.5 + 0.5 * n.z;
+            float fill = max(dot(n, normalize(vec3(-0.6, -0.4, 0.25))), 0.0) * 0.22;
+            vec3 h = normalize(l + v);
+            float spec = pow(max(dot(n, h), 0.0), 40.0) * 0.18;
+            float rim = pow(1.0 - max(dot(n, v), 0.0), 3.0) * 0.12;
+            vec3 c = uColor * (0.18 + 0.28 * hemi + 0.55 * diff + fill) + spec + rim;
+            gl_FragColor = vec4(c, 1.0);
+          }
+        `);
+        const lineProg = link(`
+          attribute vec3 aPos; uniform mat4 uVP;
+          void main() { gl_Position = uVP * vec4(aPos, 1.0); }
+        `, `
+          precision mediump float; uniform vec4 uColor;
+          void main() { gl_FragColor = uColor; }
+        `);
+
+        const meshLoc = {
+          aPos: gl.getAttribLocation(meshProg, 'aPos'), aNrm: gl.getAttribLocation(meshProg, 'aNrm'),
+          uVP: gl.getUniformLocation(meshProg, 'uVP'), uColor: gl.getUniformLocation(meshProg, 'uColor'),
+          uEye: gl.getUniformLocation(meshProg, 'uEye'), uLight: gl.getUniformLocation(meshProg, 'uLight')
+        };
+        const lineLoc = {
+          aPos: gl.getAttribLocation(lineProg, 'aPos'),
+          uVP: gl.getUniformLocation(lineProg, 'uVP'), uColor: gl.getUniformLocation(lineProg, 'uColor')
+        };
+
+        const posBuf = gl.createBuffer(), nrmBuf = gl.createBuffer(), gridBuf = gl.createBuffer();
+        let meshCount = 0, gridCount = 0;
+        const state = { yaw: -0.55, pitch: 0.42, dist: 500, center: [0, 0, 0], radius: 100 };
+
+        gl.enable(gl.DEPTH_TEST);
+        gl.enable(gl.CULL_FACE);
+        gl.cullFace(gl.BACK);
+
+        function setMesh(mesh) {
+          gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
+          gl.bufferData(gl.ARRAY_BUFFER, mesh.positions, gl.STATIC_DRAW);
+          gl.bindBuffer(gl.ARRAY_BUFFER, nrmBuf);
+          gl.bufferData(gl.ARRAY_BUFFER, mesh.normals, gl.STATIC_DRAW);
+          meshCount = mesh.positions.length / 3;
+
+          const b = mesh.bounds;
+          state.center = [b.x / 2, b.y / 2, b.z / 2];
+          state.radius = Math.hypot(b.x, b.y, b.z) / 2;
+
+          // Ground grid (10 mm minor, 50 mm major) around the part
+          const pad = 30;
+          const x0 = Math.floor(-pad / 10) * 10, x1 = Math.ceil((b.x + pad) / 10) * 10;
+          const y0 = Math.floor(-pad / 10) * 10, y1 = Math.ceil((b.y + pad) / 10) * 10;
+          const lines = [];
+          for (let x = x0; x <= x1; x += 10) lines.push(x, y0, 0, x, y1, 0);
+          for (let y = y0; y <= y1; y += 10) lines.push(x0, y, 0, x1, y, 0);
+          gl.bindBuffer(gl.ARRAY_BUFFER, gridBuf);
+          gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(lines), gl.STATIC_DRAW);
+          gridCount = lines.length / 3;
+        }
+
+        function fit() {
+          const fov = 38 * Math.PI / 180;
+          state.dist = state.radius / Math.sin(fov / 2) * 1.08;
+        }
+
+        function resize() {
+          const dpr = Math.min(window.devicePixelRatio || 1, 2);
+          const w = Math.round(canvas.clientWidth * dpr), h = Math.round(canvas.clientHeight * dpr);
+          if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+          gl.viewport(0, 0, w, h);
+        }
+
+        function render() {
+          resize();
+          gl.clearColor(0.055, 0.075, 0.13, 1);
+          gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+          if (!meshCount) return;
+
+          const aspect = canvas.width / Math.max(1, canvas.height);
+          const proj = mat4Perspective(38 * Math.PI / 180, aspect, state.dist * 0.02, state.dist * 10);
+          const cp = Math.cos(state.pitch), sp = Math.sin(state.pitch);
+          const eye = [
+            state.center[0] + state.dist * cp * Math.sin(state.yaw),
+            state.center[1] - state.dist * cp * Math.cos(state.yaw),
+            state.center[2] + state.dist * sp
+          ];
+          const view = mat4LookAt(eye, state.center, [0, 0, 1]);
+          const vp = mat4Multiply(proj, view);
+
+          // Grid
+          gl.useProgram(lineProg);
+          gl.uniformMatrix4fv(lineLoc.uVP, false, vp);
+          gl.uniform4f(lineLoc.uColor, 0.35, 0.45, 0.62, 0.35);
+          gl.bindBuffer(gl.ARRAY_BUFFER, gridBuf);
+          gl.enableVertexAttribArray(lineLoc.aPos);
+          gl.vertexAttribPointer(lineLoc.aPos, 3, gl.FLOAT, false, 0, 0);
+          gl.drawArrays(gl.LINES, 0, gridCount);
+
+          // Part
+          gl.useProgram(meshProg);
+          gl.uniformMatrix4fv(meshLoc.uVP, false, vp);
+          gl.uniform3f(meshLoc.uColor, 0.44, 0.85, 0.76);
+          gl.uniform3fv(meshLoc.uEye, eye);
+          gl.uniform3f(meshLoc.uLight, 0.45, -0.7, 1.0);
+          gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
+          gl.enableVertexAttribArray(meshLoc.aPos);
+          gl.vertexAttribPointer(meshLoc.aPos, 3, gl.FLOAT, false, 0, 0);
+          gl.bindBuffer(gl.ARRAY_BUFFER, nrmBuf);
+          gl.enableVertexAttribArray(meshLoc.aNrm);
+          gl.vertexAttribPointer(meshLoc.aNrm, 3, gl.FLOAT, false, 0, 0);
+          gl.drawArrays(gl.TRIANGLES, 0, meshCount);
+        }
+
+        // Orbit controls (mouse, touch, pinch)
+        const pointers = new Map();
+        let pinchDist = 0;
+        canvas.addEventListener('pointerdown', (e) => {
+          canvas.setPointerCapture(e.pointerId);
+          pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+          if (pointers.size === 2) {
+            const [a, b] = [...pointers.values()];
+            pinchDist = Math.hypot(a.x - b.x, a.y - b.y);
+          }
+        });
+        canvas.addEventListener('pointermove', (e) => {
+          const prev = pointers.get(e.pointerId);
+          if (!prev) return;
+          if (pointers.size === 1) {
+            state.yaw += (e.clientX - prev.x) * 0.008;
+            state.pitch = Math.max(-1.45, Math.min(1.45, state.pitch + (e.clientY - prev.y) * 0.008));
+          }
+          pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+          if (pointers.size === 2) {
+            const [a, b] = [...pointers.values()];
+            const d = Math.hypot(a.x - b.x, a.y - b.y);
+            if (pinchDist > 0) state.dist = clampDist(state.dist * pinchDist / d);
+            pinchDist = d;
+          }
+          requestRender();
+        });
+        const release = (e) => { pointers.delete(e.pointerId); pinchDist = 0; };
+        canvas.addEventListener('pointerup', release);
+        canvas.addEventListener('pointercancel', release);
+        canvas.addEventListener('wheel', (e) => {
+          e.preventDefault();
+          state.dist = clampDist(state.dist * Math.exp(e.deltaY * 0.0012));
+          requestRender();
+        }, { passive: false });
+        function clampDist(d) { return Math.max(state.radius * 0.6, Math.min(state.radius * 12, d)); }
+
+        let pending = false;
+        function requestRender() {
+          if (pending) return;
+          pending = true;
+          requestAnimationFrame(() => { pending = false; render(); });
+        }
+        if (window.ResizeObserver) new ResizeObserver(requestRender).observe(canvas);
+        else window.addEventListener('resize', requestRender);
+
+        return { setMesh, fit, requestRender, state };
+      }
+
+      function mat4Perspective(fovy, aspect, near, far) {
+        const f = 1 / Math.tan(fovy / 2), nf = 1 / (near - far);
+        return new Float32Array([f / aspect, 0, 0, 0, 0, f, 0, 0, 0, 0, (far + near) * nf, -1, 0, 0, 2 * far * near * nf, 0]);
+      }
+      function mat4LookAt(eye, center, up) {
+        let zx = eye[0] - center[0], zy = eye[1] - center[1], zz = eye[2] - center[2];
+        let len = Math.hypot(zx, zy, zz) || 1; zx /= len; zy /= len; zz /= len;
+        let xx = up[1] * zz - up[2] * zy, xy = up[2] * zx - up[0] * zz, xz = up[0] * zy - up[1] * zx;
+        len = Math.hypot(xx, xy, xz) || 1; xx /= len; xy /= len; xz /= len;
+        const yx = zy * xz - zz * xy, yy = zz * xx - zx * xz, yz = zx * xy - zy * xx;
+        return new Float32Array([
+          xx, yx, zx, 0,
+          xy, yy, zy, 0,
+          xz, yz, zz, 0,
+          -(xx * eye[0] + xy * eye[1] + xz * eye[2]),
+          -(yx * eye[0] + yy * eye[1] + yz * eye[2]),
+          -(zx * eye[0] + zy * eye[1] + zz * eye[2]), 1
+        ]);
+      }
+      function mat4Multiply(a, b) {
+        const out = new Float32Array(16);
+        for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) {
+          out[c * 4 + r] = a[r] * b[c * 4] + a[4 + r] * b[c * 4 + 1] + a[8 + r] * b[c * 4 + 2] + a[12 + r] * b[c * 4 + 3];
+        }
+        return out;
+      }
+
+      // ----- Update pipeline --------------------------------------------
+      const message = $('message');
+      const downloadBtn = $('downloadBtn');
+
+      function fmt(n, digits = 1) { return Number(n).toFixed(digits).replace(/\.0+$/, ''); }
+
+      function update(refit = false) {
+        const p = readParams();
+        const check = G.validate(p);
+        history.replaceState(null, '', hashFromParams(p));
+
+        const footMax = Math.max(0, p.wall / 2 - 0.25);
+        ranges.foot.max = Math.min(4, footMax);
+
+        if (check.errors.length) {
+          message.className = 'msg error';
+          message.textContent = check.errors.join(' ');
+          downloadBtn.disabled = true;
+          currentMesh = null;
+          return;
+        }
+        message.className = check.warnings.length ? 'msg warn' : 'msg';
+        message.textContent = check.warnings.join(' ');
+        downloadBtn.disabled = false;
+
+        currentMesh = G.buildMesh(p);
+        const shown = viewMode === 'print' ? G.toPrintOrientation(currentMesh) : currentMesh;
+        if (renderer) {
+          renderer.setMesh(shown);
+          if (refit) renderer.fit();
+          renderer.requestRender();
+        }
+
+        $('statPitch').textContent = `${fmt(currentMesh.lambda)} mm`;
+        $('statSlope').textContent = `${fmt(currentMesh.slopeDeg, 0)}°`;
+        $('statFootprint').textContent = `${fmt(p.length)} × ${fmt(p.height)} mm`;
+        $('statPrintHeight').textContent = `${fmt(p.depth)} mm`;
+        const cm3 = currentMesh.volume / 1000;
+        $('statVolume').textContent = `${fmt(cm3)} cm³ · ~${fmt(cm3 * 1.24 * 0.55, 0)} g PLA`;
+        $('statTriangles').textContent = currentMesh.triangles.toLocaleString();
+      }
+
+      function downloadSTL() {
+        if (!currentMesh) return;
+        const p = readParams();
+        const printMesh = G.toPrintOrientation(currentMesh);
+        const buffer = G.toBinarySTL(printMesh.positions);
+        const blob = new Blob([buffer], { type: 'model/stl' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `wave-rack_${p.length}x${p.depth}x${p.height}mm_${p.waves}waves.stl`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }
+
+      // ----- Wiring -------------------------------------------------------
+      for (const key of numericKeys) {
+        ranges[key].addEventListener('input', () => { inputs[key].value = ranges[key].value; update(key === 'length' || key === 'depth' || key === 'height'); });
+        inputs[key].addEventListener('input', () => {
+          if (inputs[key].value === '' || !Number.isFinite(parseFloat(inputs[key].value))) return;
+          ranges[key].value = inputs[key].value;
+          update(true);
+        });
+      }
+      inputs.ends.addEventListener('change', () => update(false));
+      inputs.segments.addEventListener('change', () => update(false));
+      downloadBtn.addEventListener('click', downloadSTL);
+      $('resetBtn').addEventListener('click', () => { writeParams({ ...G.DEFAULTS }); update(true); });
+
+      const viewButtons = { standing: $('viewStanding'), print: $('viewPrint') };
+      for (const [mode, btn] of Object.entries(viewButtons)) {
+        btn.addEventListener('click', () => {
+          viewMode = mode;
+          for (const [m, b] of Object.entries(viewButtons)) b.classList.toggle('active', m === mode);
+          if (renderer) {
+            renderer.state.yaw = mode === 'print' ? -0.75 : -0.55;
+            renderer.state.pitch = mode === 'print' ? 0.6 : 0.42;
+          }
+          update(true);
+        });
+      }
+      window.addEventListener('hashchange', () => { writeParams(paramsFromHash()); update(true); });
+
+      writeParams(paramsFromHash());
+      update(true);
+    })();
+  </script>
+</body>
+</html>
