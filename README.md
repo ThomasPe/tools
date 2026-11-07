@@ -44,6 +44,17 @@
   * **Ergonomics & Sockets:** Parametric finger pull notches, customizable floor thickness, and optional base magnet holes.
   * **Instant STL Export:** Sub-second CSG boolean difference in WebAssembly, exporting watertight binary STLs ready for slicers.
 
+### 4. Wave Rack Generator
+* **URL:** [https://tools.pentenrieder.dev/wave-rack/](https://tools.pentenrieder.dev/wave-rack/)
+* **Directory:** [`wave-rack/`](wave-rack/)
+* **Description:** Generates a parametric, wave-shaped rack for cutting boards, plates, lids or books as a print-ready binary STL. The part is exported lying on its side so every layer contains the whole curve &mdash; strong layer lines and no supports. Zero dependencies: geometry, WebGL preview and STL export are hand-written in a single HTML file.
+* **Key Capabilities:**
+  * **Four main parameters:** length, depth (print height), height and number of waves, plus fine tuning for wall thickness, flat feet, end shape and resolution.
+  * **Constant-thickness sine ribbon:** true normal offset with rounded end caps; too-tight combinations are detected and the maximum wall thickness is suggested.
+  * **Live 3D preview:** orbit, zoom and pinch; switch between "in use" and "on the print bed" orientation.
+  * **Watertight STL export:** every edge is shared by exactly two triangles, with slot pitch, slope, volume and weight estimate shown live.
+  * **Shareable presets:** all settings are mirrored into the URL hash.
+
 ---
 
 ## 📁 Repository Structure
@@ -55,6 +66,8 @@ tools/
 ├── lumia-motion-photo-converter/      # Tool 1: Lumia converter web app
 │   └── index.html
 ├── timelapse/                         # Tool 2: Time-lapse video creator
+│   └── index.html
+├── wave-rack/                         # Tool 4: Wave rack STL generator
 │   └── index.html
 ├── apps/
 │   └── gridfinity/                    # Tool 3: Gridfinity Studio (Vite + React + WASM source)
@@ -72,7 +85,9 @@ tools/
 │   ├── test-engine.mjs
 │   ├── test-matcher.mjs
 │   ├── test-html.mjs
-│   └── test-timelapse.mjs
+│   ├── test-timelapse.mjs
+│   ├── test-gridfinity.mjs
+│   └── test-wave-rack.mjs
 ├── .github/workflows/
 │   └── deploy.yml                     # GitHub Actions CI & Pages deployment
 ├── package.json
