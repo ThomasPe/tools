@@ -18,6 +18,47 @@ interface Viewport3DProps {
   isComputing: boolean;
 }
 
+/** Angle (degrees) above which a shared edge is drawn as a feature line. */
+const EDGE_THRESHOLD_DEG = 28;
+
+/**
+ * Solid plastic look for the bin: flat shading so each facet of the
+ * Manifold mesh (indexed, shared vertices) keeps its own normal instead of
+ * blurring across 90° corners, and a polygon offset so feature lines drawn on
+ * top of it never z-fight.
+ */
+function createSolidMaterial(color: number, wireframe: boolean): THREE.MeshStandardMaterial {
+  return new THREE.MeshStandardMaterial({
+    color,
+    roughness: 0.55,
+    metalness: 0.0,
+    flatShading: true,
+    wireframe,
+    polygonOffset: true,
+    polygonOffsetFactor: 1,
+    polygonOffsetUnits: 1,
+  });
+}
+
+/** Dark feature lines along sharp edges that make faces readable. */
+function createEdgeLines(geometry: THREE.BufferGeometry): THREE.LineSegments {
+  const edges = new THREE.EdgesGeometry(geometry, EDGE_THRESHOLD_DEG);
+  const material = new THREE.LineBasicMaterial({
+    color: 0x0b1a2e,
+    transparent: true,
+    opacity: 0.85,
+  });
+  const lines = new THREE.LineSegments(edges, material);
+  lines.renderOrder = 1;
+  return lines;
+}
+
+function disposeLines(lines: THREE.LineSegments | null) {
+  if (!lines) return;
+  lines.geometry.dispose();
+  (lines.material as THREE.Material).dispose();
+}
+
 export const Viewport3D: React.FC<Viewport3DProps> = ({
   binGeometry,
   toolGeometry,
@@ -43,6 +84,8 @@ export const Viewport3D: React.FC<Viewport3DProps> = ({
 
   // Mesh refs
   const binMeshRef = useRef<THREE.Mesh | null>(null);
+  const binEdgesRef = useRef<THREE.LineSegments | null>(null);
+  const csgEdgesRef = useRef<THREE.LineSegments | null>(null);
   const toolMeshRef = useRef<THREE.Mesh | null>(null);
   const csgMeshRef = useRef<THREE.Mesh | null>(null);
   const notchesMeshRef = useRef<THREE.Mesh | null>(null);
@@ -73,6 +116,8 @@ export const Viewport3D: React.FC<Viewport3DProps> = ({
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.05;
     container.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
@@ -84,23 +129,47 @@ export const Viewport3D: React.FC<Viewport3DProps> = ({
     orbit.update();
     orbitRef.current = orbit;
 
-    // 5. Lighting
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+    // 5. Lighting: a low ambient base, a sky/ground hemisphere for a soft
+    // top-down gradient, one strong shadow-casting key light and a cool fill
+    // from the opposite side so every face of a box gets a distinct shade.
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.25);
     scene.add(ambientLight);
 
-    const dirLight1 = new THREE.DirectionalLight(0xffffff, 1.2);
-    dirLight1.position.set(100, -100, 200);
+    const hemiLight = new THREE.HemisphereLight(0xbfd7ff, 0x0b1020, 0.55);
+    hemiLight.position.set(0, 0, 1);
+    scene.add(hemiLight);
+
+    const dirLight1 = new THREE.DirectionalLight(0xffffff, 1.6);
+    dirLight1.position.set(140, -120, 220);
     dirLight1.castShadow = true;
+    dirLight1.shadow.mapSize.set(2048, 2048);
+    dirLight1.shadow.camera.near = 50;
+    dirLight1.shadow.camera.far = 700;
+    dirLight1.shadow.camera.left = -260;
+    dirLight1.shadow.camera.right = 260;
+    dirLight1.shadow.camera.top = 260;
+    dirLight1.shadow.camera.bottom = -260;
+    dirLight1.shadow.bias = -0.0005;
+    dirLight1.shadow.normalBias = 0.3;
     scene.add(dirLight1);
 
-    const dirLight2 = new THREE.DirectionalLight(0x93c5fd, 0.5);
-    dirLight2.position.set(-100, 100, 100);
+    const dirLight2 = new THREE.DirectionalLight(0x93c5fd, 0.45);
+    dirLight2.position.set(-160, 120, 80);
     scene.add(dirLight2);
 
-    // 6. Gridfinity Ground Grid (42mm grid pitch)
+    // 6. Gridfinity Ground Grid (42mm grid pitch) plus a shadow catcher so the
+    // bin visibly sits on the ground.
     const gridHelper = new THREE.GridHelper(420, 10, 0x38bdf8, 0x1e293b);
     gridHelper.rotation.x = Math.PI / 2; // Lie flat in XY plane
     scene.add(gridHelper);
+
+    const shadowCatcher = new THREE.Mesh(
+      new THREE.PlaneGeometry(420, 420),
+      new THREE.ShadowMaterial({ color: 0x000000, opacity: 0.35 })
+    );
+    shadowCatcher.position.z = -0.05;
+    shadowCatcher.receiveShadow = true;
+    scene.add(shadowCatcher);
 
     // 7. Pivot group for tool and TransformControls
     const toolPivot = new THREE.Group();
@@ -217,19 +286,25 @@ export const Viewport3D: React.FC<Viewport3DProps> = ({
       }
       binMeshRef.current = null;
     }
+    if (binEdgesRef.current) {
+      scene.remove(binEdgesRef.current);
+      disposeLines(binEdgesRef.current);
+      binEdgesRef.current = null;
+    }
 
     if (binGeometry && !isPreviewCSG) {
-      const material = new THREE.MeshStandardMaterial({
-        color: 0x0284c7, // Sky blue plastic
-        roughness: 0.35,
-        metalness: 0.05,
-        wireframe: showWireframe,
-      });
+      const material = createSolidMaterial(0x0ea5e9, showWireframe); // Sky blue plastic
       const mesh = new THREE.Mesh(binGeometry, material);
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       scene.add(mesh);
       binMeshRef.current = mesh;
+
+      if (!showWireframe) {
+        const lines = createEdgeLines(binGeometry);
+        scene.add(lines);
+        binEdgesRef.current = lines;
+      }
     }
   }, [binGeometry, isPreviewCSG, showWireframe]);
 
@@ -251,10 +326,10 @@ export const Viewport3D: React.FC<Viewport3DProps> = ({
     if (toolGeometry && !isPreviewCSG) {
       const material = new THREE.MeshStandardMaterial({
         color: 0xf59e0b, // Amber / Orange ghost
-        roughness: 0.2,
-        metalness: 0.1,
+        roughness: 0.35,
+        metalness: 0.05,
         transparent: true,
-        opacity: 0.8,
+        opacity: 0.85,
         wireframe: showWireframe,
       });
       const mesh = new THREE.Mesh(toolGeometry, material);
@@ -338,19 +413,25 @@ export const Viewport3D: React.FC<Viewport3DProps> = ({
       }
       csgMeshRef.current = null;
     }
+    if (csgEdgesRef.current) {
+      scene.remove(csgEdgesRef.current);
+      disposeLines(csgEdgesRef.current);
+      csgEdgesRef.current = null;
+    }
 
     if (csgGeometry && isPreviewCSG) {
-      const material = new THREE.MeshStandardMaterial({
-        color: 0x10b981, // Emerald green for finalized bin with cutout
-        roughness: 0.35,
-        metalness: 0.05,
-        wireframe: showWireframe,
-      });
+      const material = createSolidMaterial(0x10b981, showWireframe); // Emerald green for finalized bin with cutout
       const mesh = new THREE.Mesh(csgGeometry, material);
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       scene.add(mesh);
       csgMeshRef.current = mesh;
+
+      if (!showWireframe) {
+        const lines = createEdgeLines(csgGeometry);
+        scene.add(lines);
+        csgEdgesRef.current = lines;
+      }
     }
   }, [csgGeometry, isPreviewCSG, showWireframe]);
 
