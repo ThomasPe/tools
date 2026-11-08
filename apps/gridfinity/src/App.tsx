@@ -4,28 +4,18 @@ import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 import * as BufferGeometryUtils from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 import type { AppProjectConfig, BinConfig, GridCell, ToolCutoutConfig } from './types';
-import { getManifold, resetManifold } from './geometry/manifoldInit';
+import { BASE_HEIGHT, getBinBodyHeight, getBinTopZ } from './geometry/gridfinity';
 import {
-  generateGridfinityBin,
-  UNIT_HEIGHT,
-  BASE_HEIGHT,
-  type ManifoldModule
-} from './geometry/gridfinity';
-import {
-  manifoldToThreeGeometry,
-  threeGeometryToManifold,
-  transformToolManifold,
-  createExtrudeToTopCutter,
+  meshArraysToThreeGeometry,
+  threeGeometryToMeshArrays,
   createExtrudePreviewGeometry,
-  createFingerNotches,
   createFingerNotchesThreeGeometry,
   getToolMatrix,
   computeToolWallClearance,
-  exportManifoldToBinarySTL,
-  applyToolSmoothing,
-  laplacianSmoothGeometry,
-  createSmoothedToolGeometry
+  meshArraysToBinarySTL,
+  downloadBinarySTL
 } from './geometry/meshUtils';
+import { CsgEngine, CsgEngineError, getManifoldWasmUrl } from './geometry/csgClient';
 import { createSampleToolGeometry } from './geometry/sampleTools';
 
 import { GridEditor } from './components/GridEditor';
@@ -92,8 +82,8 @@ function getStoredConfig(): AppProjectConfig | null {
 }
 
 export default function App() {
-  // Manifold WASM state
-  const [manifoldMod, setManifoldMod] = useState<ManifoldModule | null>(null);
+  // Geometry engine (Manifold WASM inside a dedicated worker, so the UI never blocks)
+  const engineRef = useRef<CsgEngine | null>(null);
   const [isWasmReady, setIsWasmReady] = useState(false);
   const [wasmError, setWasmError] = useState<string | null>(null);
 
@@ -170,7 +160,10 @@ export default function App() {
   const [isComputing, setIsComputing] = useState(false);
   const [computeTime, setComputeTime] = useState<number | null>(null);
   const [statusMessage, setStatusMessage] = useState<string>('Initializing Manifold3D WASM...');
-  const computeTimeoutRef = useRef<any>(null);
+  // Monotonic request counters so stale worker results never overwrite newer ones
+  const csgRequestRef = useRef(0);
+  const binRequestRef = useRef(0);
+  const smoothRequestRef = useRef(0);
 
   const [, startTransition] = useTransition();
 
@@ -190,11 +183,12 @@ export default function App() {
     }
   }, [cells, binConfig, toolCutoutConfig]);
 
-  // 1. Initialize Manifold WASM on mount
+  // 1. Start the geometry worker and initialise Manifold WASM on mount
   useEffect(() => {
-    getManifold()
-      .then(mod => {
-        setManifoldMod(mod);
+    const engine = new CsgEngine(getManifoldWasmUrl());
+    engineRef.current = engine;
+    engine.init()
+      .then(() => {
         setIsWasmReady(true);
         setStatusMessage('Manifold3D WASM initialized successfully');
 
@@ -218,7 +212,25 @@ export default function App() {
         setWasmError(err.message || 'WASM initialization error');
         setStatusMessage('Failed to initialize geometry engine');
       });
+    return () => {
+      engine.dispose();
+      engineRef.current = null;
+    };
   }, []);
+
+  /**
+   * Reports an engine failure. After a WASM trap the worker is restarted automatically by the
+   * client; the user only needs to know that the heavy mesh should be simplified.
+   */
+  const reportEngineError = (context: string, err: unknown) => {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`${context} failed:`, err);
+    if (err instanceof CsgEngineError && err.fatal) {
+      setStatusMessage(`${context} hit the geometry engine's memory limit and the engine was restarted. Try the smoothing / defeaturing option to reduce mesh density.`);
+    } else {
+      setStatusMessage(`${context} error: ${message}`);
+    }
+  };
 
   // Compute display tool geometry with smoothing and hole defeaturing
   useEffect(() => {
@@ -231,18 +243,21 @@ export default function App() {
       return;
     }
 
+    const engine = engineRef.current;
+    if (!engine || !isWasmReady) return;
+
+    const requestId = ++smoothRequestRef.current;
     const timer = setTimeout(() => {
-      try {
-        const smoothed = createSmoothedToolGeometry(
-          manifoldMod,
-          rawToolGeometry,
-          toolCutoutConfig.smoothing
-        );
-        setDisplayToolGeometry(smoothed);
-      } catch (err) {
-        console.warn('Error creating smoothed preview:', err);
-        setDisplayToolGeometry(rawToolGeometry.clone());
-      }
+      engine.smoothTool(threeGeometryToMeshArrays(rawToolGeometry), toolCutoutConfig.smoothing)
+        .then(({ mesh }) => {
+          if (requestId !== smoothRequestRef.current) return;
+          setDisplayToolGeometry(meshArraysToThreeGeometry(mesh));
+        })
+        .catch(err => {
+          if (requestId !== smoothRequestRef.current) return;
+          console.warn('Error creating smoothed preview:', err);
+          setDisplayToolGeometry(rawToolGeometry.clone());
+        });
     }, 50);
 
     return () => clearTimeout(timer);
@@ -251,144 +266,54 @@ export default function App() {
     toolCutoutConfig.smoothing?.enabled,
     toolCutoutConfig.smoothing?.tolerance,
     toolCutoutConfig.smoothing?.surfaceIterations,
-    manifoldMod
+    isWasmReady
   ]);
 
-  // Current calculated bin height
-  const calculatedBinHeight = binConfig.useCustomHeight && binConfig.customHeightMm
-    ? binConfig.customHeightMm
-    : binConfig.heightUnits * UNIT_HEIGHT;
+  // Current bin body height (base + walls) and the highest point of any bin material (incl. stacking lip)
+  const calculatedBinHeight = getBinBodyHeight(binConfig);
+  const binTopZ = getBinTopZ(binConfig);
 
   // 2. Recompute Bin Geometry whenever cells or binConfig change
   useEffect(() => {
-    if (!manifoldMod || !isWasmReady || cells.length === 0) return;
+    const engine = engineRef.current;
+    if (!engine || !isWasmReady || cells.length === 0) return;
 
-    try {
-      const t0 = performance.now();
-      const binSolid = generateGridfinityBin(manifoldMod, cells, binConfig);
-      const geo = manifoldToThreeGeometry(binSolid);
-      binSolid.delete();
-      setBinGeometry(geo);
-      const t1 = performance.now();
-      setComputeTime(Math.round(t1 - t0));
-    } catch (err: any) {
-      console.error('Error generating bin solid:', err);
-    }
-  }, [manifoldMod, isWasmReady, cells, binConfig]);
+    const requestId = ++binRequestRef.current;
+    engine.buildBin(cells, binConfig)
+      .then(({ mesh, elapsed }) => {
+        if (requestId !== binRequestRef.current) return;
+        setBinGeometry(meshArraysToThreeGeometry(mesh));
+        setComputeTime(Math.round(elapsed));
+      })
+      .catch(err => {
+        if (requestId !== binRequestRef.current) return;
+        reportEngineError('Bin generation', err);
+      });
+  }, [isWasmReady, cells, binConfig]);
 
-  // 3. Compute CSG Boolean Difference (Bin - Transformed Tool - Notches)
+  // 3. Compute CSG Boolean Difference (Bin - Tool Cutout - Notches) in the worker
   const computeCSG = () => {
-    if (!manifoldMod || !isWasmReady || !rawToolGeometry || cells.length === 0) return;
+    const engine = engineRef.current;
+    if (!engine || !isWasmReady || !rawToolGeometry || cells.length === 0) return;
 
-    if (computeTimeoutRef.current) {
-      clearTimeout(computeTimeoutRef.current);
-    }
-
+    const requestId = ++csgRequestRef.current;
     setIsComputing(true);
     setStatusMessage('Computing watertight boolean difference...');
 
-    computeTimeoutRef.current = setTimeout(async () => {
-      let binSolid: any = null;
-      let toolSolid: any = null;
-      let cutter: any = null;
-      let resultSolid: any = null;
-      try {
-        const t0 = performance.now();
-        // 1. Generate bin solid
-        binSolid = generateGridfinityBin(manifoldMod, cells, binConfig);
-
-        // 2. Prepare tool geometry (surface relaxation if requested)
-        let baseGeom = rawToolGeometry;
-        if (toolCutoutConfig.smoothing?.enabled && toolCutoutConfig.smoothing.surfaceIterations > 0) {
-          baseGeom = laplacianSmoothGeometry(rawToolGeometry, toolCutoutConfig.smoothing.surfaceIterations);
-        }
-
-        // threeGeometryToManifold applies high-density auto-decimation if > 90k triangles and smoothing is disabled
-        toolSolid = threeGeometryToManifold(manifoldMod, baseGeom, toolCutoutConfig.smoothing?.enabled ? 0 : 90000);
-
-        // 3. Apply defeaturing / screw-hole elimination if enabled
-        if (toolCutoutConfig.smoothing?.enabled) {
-          const smoothed = applyToolSmoothing(toolSolid, toolCutoutConfig.smoothing);
-          if (smoothed !== toolSolid) {
-            toolSolid.delete();
-            toolSolid = smoothed;
-          }
-        }
-
-        // 4. Apply scale, rotation, translation
-        cutter = transformToolManifold(toolSolid, toolCutoutConfig.transform);
-        toolSolid.delete();
-        toolSolid = null;
-
-        // 5. Undercut removal (extrude upwards to bin top)
-        if (toolCutoutConfig.extrudeToTop) {
-          cutter = createExtrudeToTopCutter(
-            manifoldMod,
-            cutter,
-            calculatedBinHeight,
-            toolCutoutConfig.extrudeMode || 'contour'
-          );
-        }
-
-        // 6. Finger notches
-        if (toolCutoutConfig.notches.enabled) {
-          const cutterBounds = cutter.boundingBox();
-          const notchesSolid = createFingerNotches(
-            manifoldMod,
-            cutterBounds,
-            calculatedBinHeight,
-            toolCutoutConfig.notches
-          );
-          if (notchesSolid) {
-            const merged = manifoldMod.Manifold.union([cutter, notchesSolid]);
-            cutter.delete();
-            notchesSolid.delete();
-            cutter = merged;
-          }
-        }
-
-        // 7. Boolean Difference
-        resultSolid = manifoldMod.Manifold.difference(binSolid, cutter);
-        binSolid.delete();
-        binSolid = null;
-        cutter.delete();
-        cutter = null;
-
-        const resultGeo = manifoldToThreeGeometry(resultSolid);
-        const triCount = resultSolid.getMesh().numTri;
-        resultSolid.delete();
-        resultSolid = null;
-
-        setCsgGeometry(resultGeo);
-        const elapsed = Math.round(performance.now() - t0);
-        setComputeTime(elapsed);
-        setStatusMessage(`Cutout computed in ${elapsed}ms (${triCount} triangles)`);
-      } catch (err: any) {
-        console.error('CSG Boolean computation failed:', err);
-        const errMsg = err?.message || String(err);
-        setStatusMessage(`CSG Error: ${errMsg}`);
-
-        // If WebAssembly crashed (e.g. table index is out of bounds or memory trap),
-        // re-initialize the WASM engine automatically so the application recovers gracefully!
-        if (errMsg.includes('bounds') || errMsg.includes('RuntimeError') || errMsg.includes('unreachable') || errMsg.includes('memory')) {
-          console.warn('WASM runtime exception detected. Reinitializing geometry engine...');
-          resetManifold();
-          try {
-            const freshMod = await getManifold();
-            setManifoldMod(freshMod);
-            setStatusMessage('Recovered geometry engine from memory limit. High-density meshes automatically optimized.');
-          } catch (reinitErr) {
-            console.error('Failed to reinitialize WASM engine:', reinitErr);
-          }
-        }
-      } finally {
-        if (binSolid) try { binSolid.delete(); } catch {}
-        if (toolSolid) try { toolSolid.delete(); } catch {}
-        if (cutter) try { cutter.delete(); } catch {}
-        if (resultSolid) try { resultSolid.delete(); } catch {}
-        setIsComputing(false);
-      }
-    }, 20);
+    engine.cutout(cells, binConfig, toolCutoutConfig, threeGeometryToMeshArrays(rawToolGeometry))
+      .then(({ mesh, triangles, elapsed }) => {
+        if (requestId !== csgRequestRef.current) return;
+        setCsgGeometry(meshArraysToThreeGeometry(mesh));
+        setComputeTime(Math.round(elapsed));
+        setStatusMessage(`Cutout computed in ${Math.round(elapsed)}ms (${triangles} triangles)`);
+      })
+      .catch(err => {
+        if (requestId !== csgRequestRef.current) return;
+        reportEngineError('CSG', err);
+      })
+      .finally(() => {
+        if (requestId === csgRequestRef.current) setIsComputing(false);
+      });
   };
 
   // Recompute CSG if preview is active and parameters changed
@@ -526,88 +451,24 @@ export default function App() {
 
   // Handle binary STL export
   const handleExportSTL = () => {
-    if (!manifoldMod || !isWasmReady || cells.length === 0) return;
+    const engine = engineRef.current;
+    if (!engine || !isWasmReady || cells.length === 0) return;
 
     setIsComputing(true);
     setStatusMessage('Generating watertight binary STL for 3D printing...');
 
-    setTimeout(() => {
-      let binSolid: any = null;
-      let toolSolid: any = null;
-      let cutter: any = null;
-      let finalSolid: any = null;
-      try {
-        binSolid = generateGridfinityBin(manifoldMod, cells, binConfig);
-        finalSolid = binSolid;
-
-        if (rawToolGeometry) {
-          let baseGeom = rawToolGeometry;
-          if (toolCutoutConfig.smoothing?.enabled && toolCutoutConfig.smoothing.surfaceIterations > 0) {
-            baseGeom = laplacianSmoothGeometry(rawToolGeometry, toolCutoutConfig.smoothing.surfaceIterations);
-          }
-
-          toolSolid = threeGeometryToManifold(manifoldMod, baseGeom, toolCutoutConfig.smoothing?.enabled ? 0 : 90000);
-
-          if (toolCutoutConfig.smoothing?.enabled) {
-            const smoothed = applyToolSmoothing(toolSolid, toolCutoutConfig.smoothing);
-            if (smoothed !== toolSolid) {
-              toolSolid.delete();
-              toolSolid = smoothed;
-            }
-          }
-
-          cutter = transformToolManifold(toolSolid, toolCutoutConfig.transform);
-          toolSolid.delete();
-          toolSolid = null;
-
-          if (toolCutoutConfig.extrudeToTop) {
-            cutter = createExtrudeToTopCutter(
-              manifoldMod,
-              cutter,
-              calculatedBinHeight,
-              toolCutoutConfig.extrudeMode || 'contour'
-            );
-          }
-
-          if (toolCutoutConfig.notches.enabled) {
-            const cutterBounds = cutter.boundingBox();
-            const notchesSolid = createFingerNotches(
-              manifoldMod,
-              cutterBounds,
-              calculatedBinHeight,
-              toolCutoutConfig.notches
-            );
-            if (notchesSolid) {
-              const merged = manifoldMod.Manifold.union([cutter, notchesSolid]);
-              cutter.delete();
-              notchesSolid.delete();
-              cutter = merged;
-            }
-          }
-
-          finalSolid = manifoldMod.Manifold.difference(binSolid, cutter);
-          binSolid.delete();
-          binSolid = null;
-          cutter.delete();
-          cutter = null;
-        }
-
+    const tool = rawToolGeometry ? threeGeometryToMeshArrays(rawToolGeometry) : null;
+    engine.cutout(cells, binConfig, toolCutoutConfig, tool)
+      .then(({ mesh }) => {
         const filename = `gridfinity-${cells.length}tiles-${calculatedBinHeight.toFixed(0)}mm-custom-slot.stl`;
-        exportManifoldToBinarySTL(finalSolid, filename);
-        finalSolid.delete();
-        finalSolid = null;
+        downloadBinarySTL(meshArraysToBinarySTL(mesh), filename);
         setStatusMessage(`Exported ${filename} successfully!`);
-      } catch (err: any) {
-        console.error('Export failed:', err);
-        alert('Export failed: ' + err.message);
-      } finally {
-        if (binSolid) try { binSolid.delete(); } catch {}
-        if (toolSolid) try { toolSolid.delete(); } catch {}
-        if (cutter) try { cutter.delete(); } catch {}
-        if (finalSolid) try { finalSolid.delete(); } catch {}
-        setIsComputing(false);
-      }
-    }, 50);
+      })
+      .catch(err => {
+        reportEngineError('Export', err);
+        alert('Export failed: ' + (err instanceof Error ? err.message : String(err)));
+      })
+      .finally(() => setIsComputing(false));
   };
 
   // Calculate tool notches geometry, upward extrusion preview geometry, and accurate polyomino wall clearance
@@ -621,7 +482,8 @@ export default function App() {
       extrudePreviewGeometry = createExtrudePreviewGeometry(
         activeToolGeom,
         toolCutoutConfig.transform,
-        calculatedBinHeight
+        binTopZ,
+        toolCutoutConfig.extrudeMode ?? 'contour'
       );
     }
 
@@ -636,7 +498,7 @@ export default function App() {
             min: [transformedBox.min.x, transformedBox.min.y, transformedBox.min.z],
             max: [transformedBox.max.x, transformedBox.max.y, transformedBox.max.z]
           },
-          calculatedBinHeight,
+          binTopZ,
           toolCutoutConfig.notches
         );
       }

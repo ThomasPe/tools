@@ -1,60 +1,90 @@
 import * as THREE from 'three';
 import * as BufferGeometryUtils from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { GRID_SIZE, TOLERANCE, getGridBounds, type ManifoldModule } from './gridfinity';
-import type { GridCell, NotchConfig, SmoothingConfig, ToolTransform } from '../types';
+import type { Manifold } from 'manifold-3d';
+import { GRID_SIZE, TOLERANCE, getGridBounds, type ManifoldModule } from './gridfinity.ts';
+import { createDropInCutterMesh, type DropInMode, type SolidMesh } from './heightfield.ts';
+import { withScope } from './scope.ts';
+import type { GridCell, NotchConfig, SmoothingConfig, ToolTransform } from '../types.ts';
+
+/** Plain, transferable triangle mesh (positions xyz, triangle indices). */
+export interface MeshArrays {
+  positions: Float32Array;
+  indices: Uint32Array;
+}
+
+/** Axis-aligned bounds as returned by Manifold.boundingBox(). */
+export interface Bounds3 {
+  min: [number, number, number];
+  max: [number, number, number];
+}
 
 /**
- * Converts a Manifold solid into a Three.js BufferGeometry with clean normals
+ * Extracts a Manifold solid into detached typed arrays (copies, decoupled from the WASM heap).
  */
-export function manifoldToThreeGeometry(manifold: any): THREE.BufferGeometry {
+export function manifoldToMeshArrays(manifold: Manifold): MeshArrays {
   const mesh = manifold.getMesh();
+  const numProp = mesh.numProp;
+  let positions: Float32Array;
+  if (numProp === 3) {
+    positions = new Float32Array(mesh.vertProperties);
+  } else {
+    const numVert = mesh.vertProperties.length / numProp;
+    positions = new Float32Array(numVert * 3);
+    for (let v = 0; v < numVert; v++) {
+      positions[v * 3] = mesh.vertProperties[v * numProp];
+      positions[v * 3 + 1] = mesh.vertProperties[v * numProp + 1];
+      positions[v * 3 + 2] = mesh.vertProperties[v * numProp + 2];
+    }
+  }
+  return { positions, indices: new Uint32Array(mesh.triVerts) };
+}
+
+/**
+ * Builds a Three.js BufferGeometry with clean normals from plain mesh arrays.
+ */
+export function meshArraysToThreeGeometry(mesh: MeshArrays): THREE.BufferGeometry {
   const geometry = new THREE.BufferGeometry();
-
-  // Create clean detached typed array copies to decouple Three.js buffers from WASM heap
-  const posCopy = new Float32Array(mesh.vertProperties);
-  const indexCopy = new Uint32Array(mesh.triVerts);
-
-  geometry.setAttribute('position', new THREE.BufferAttribute(posCopy, mesh.numProp));
-  geometry.setIndex(new THREE.BufferAttribute(indexCopy, 1));
+  geometry.setAttribute('position', new THREE.BufferAttribute(mesh.positions, 3));
+  geometry.setIndex(new THREE.BufferAttribute(mesh.indices, 1));
   geometry.computeVertexNormals();
-
   return geometry;
 }
 
 /**
- * Converts a Three.js BufferGeometry (e.g. from an STL file) into a watertight Manifold
+ * Converts a Manifold solid into a Three.js BufferGeometry with clean normals
  */
-export function threeGeometryToManifold(mod: ManifoldModule, geometry: THREE.BufferGeometry, maxTriangles = 90000): any {
-  // Ensure the geometry is indexed and duplicate vertices merged within tolerance
-  const merged = geometry.index ? geometry : BufferGeometryUtils.mergeVertices(geometry, 1e-4);
+export function manifoldToThreeGeometry(manifold: Manifold): THREE.BufferGeometry {
+  return meshArraysToThreeGeometry(manifoldToMeshArrays(manifold));
+}
 
-  if (!merged.index) {
-    throw new Error('Failed to index geometry vertices.');
-  }
+/**
+ * Extracts plain, transferable arrays from a Three.js geometry (indexing it if necessary).
+ */
+export function threeGeometryToMeshArrays(geometry: THREE.BufferGeometry): MeshArrays {
+  const indexed = geometry.index ? geometry : BufferGeometryUtils.mergeVertices(geometry, 1e-4);
+  const positions = new Float32Array(indexed.attributes.position.array.length);
+  positions.set(indexed.attributes.position.array);
+  const indices = new Uint32Array(indexed.index ? indexed.index.count : 0);
+  if (indexed.index) indices.set(indexed.index.array);
+  return { positions, indices };
+}
 
-  const positions = merged.attributes.position.array;
-  const indices = merged.index.array;
+/**
+ * Converts a triangle mesh (e.g. from an STL file) into a watertight Manifold
+ */
+export function meshArraysToManifold(mod: ManifoldModule, mesh: MeshArrays, maxTriangles = 90000): Manifold {
+  const triVerts = new Uint32Array(mesh.indices.length);
+  triVerts.set(mesh.indices);
+  const vertProperties = new Float32Array(mesh.positions.length);
+  vertProperties.set(mesh.positions);
 
-  // Create clean standalone typed arrays without byteOffset aliasing
-  const triVerts = new Uint32Array(indices.length);
-  triVerts.set(indices);
-
-  const vertProperties = new Float32Array(positions.length);
-  vertProperties.set(positions);
-
-  const mesh = new mod.Mesh({
-    numProp: 3,
-    triVerts,
-    vertProperties,
-    tolerance: 1e-4
-  });
-
-  mesh.merge();
-  let manifold = new mod.Manifold(mesh);
+  const wasmMesh = new mod.Mesh({ numProp: 3, triVerts, vertProperties, tolerance: 1e-4 });
+  wasmMesh.merge();
+  let manifold = new mod.Manifold(wasmMesh);
 
   // If raw mesh is excessively dense for 32-bit WASM CSG (> maxTriangles), apply high-precision decimation
   // (0.04mm = 40 microns, far finer than standard 3D printer resolution) to prevent WASM table/memory crashes.
-  if (maxTriangles > 0 && manifold.getMesh().numTri > maxTriangles) {
+  if (maxTriangles > 0 && manifold.numTri() > maxTriangles) {
     try {
       const decimated = manifold.simplify(0.04);
       manifold.delete();
@@ -68,10 +98,18 @@ export function threeGeometryToManifold(mod: ManifoldModule, geometry: THREE.Buf
 }
 
 /**
+ * Converts a Three.js BufferGeometry (e.g. from an STL file) into a watertight Manifold
+ */
+export function threeGeometryToManifold(mod: ManifoldModule, geometry: THREE.BufferGeometry, maxTriangles = 90000): Manifold {
+  return meshArraysToManifold(mod, threeGeometryToMeshArrays(geometry), maxTriangles);
+}
+
+/**
  * Defeatures and fills small screw holes, recesses, text embossing, and tiny cavities in the tool manifold
  * so they don't produce protruding plastic posts or bumps inside the 3D-printed tool slot.
+ * Returns the input unchanged when smoothing is disabled or fails.
  */
-export function applyToolSmoothing(toolManifold: any, config: SmoothingConfig): any {
+export function applyToolSmoothing(toolManifold: Manifold, config: SmoothingConfig): Manifold {
   if (!config.enabled || config.tolerance <= 0) {
     return toolManifold;
   }
@@ -84,59 +122,13 @@ export function applyToolSmoothing(toolManifold: any, config: SmoothingConfig): 
 }
 
 /**
- * Creates a displayable Three.js BufferGeometry with surface smoothing and hole defeaturing applied
+ * Applies Laplacian smoothing iterations to smooth rough scan noise and jagged facets on a mesh.
  */
-export function createSmoothedToolGeometry(
-  mod: ManifoldModule | null,
-  rawGeometry: THREE.BufferGeometry,
-  config: SmoothingConfig
-): THREE.BufferGeometry {
-  if (!config.enabled) {
-    return rawGeometry;
-  }
+export function laplacianSmoothMesh(mesh: MeshArrays, iterations = 2, lambda = 0.4): MeshArrays {
+  if (iterations <= 0) return mesh;
 
-  let geo = rawGeometry;
-  // 1. Surface Laplacian relaxation for scan noise
-  if (config.surfaceIterations > 0) {
-    geo = laplacianSmoothGeometry(geo, config.surfaceIterations);
-  }
-
-  // 2. Hole defeaturing via Manifold simplification
-  if (mod && config.tolerance > 0) {
-    let toolManifold: any = null;
-    let simplified: any = null;
-    try {
-      toolManifold = threeGeometryToManifold(mod, geo, 0); // Don't auto-decimate here, user tolerance handles it
-      simplified = toolManifold.simplify(config.tolerance);
-      const threeGeo = manifoldToThreeGeometry(simplified);
-      return threeGeo;
-    } catch (err) {
-      console.warn('Failed to simplify tool geometry for display:', err);
-      return geo;
-    } finally {
-      if (toolManifold) {
-        try { toolManifold.delete(); } catch { /* ignore */ }
-      }
-      if (simplified) {
-        try { simplified.delete(); } catch { /* ignore */ }
-      }
-    }
-  }
-
-  return geo;
-}
-
-/**
- * Applies Laplacian smoothing iterations to smooth rough scan noise and jagged facets on Three.js geometry
- */
-export function laplacianSmoothGeometry(geometry: THREE.BufferGeometry, iterations = 2, lambda = 0.4): THREE.BufferGeometry {
-  if (iterations <= 0) return geometry;
-
-  const indexed = geometry.index ? geometry : BufferGeometryUtils.mergeVertices(geometry, 1e-4);
-  if (!indexed.index) return geometry;
-
-  const pos = indexed.attributes.position.array as Float32Array;
-  const indices = indexed.index.array as Uint32Array | Uint16Array;
+  const pos = mesh.positions;
+  const indices = mesh.indices;
   const numVerts = pos.length / 3;
 
   // Build adjacency list
@@ -170,10 +162,37 @@ export function laplacianSmoothGeometry(geometry: THREE.BufferGeometry, iteratio
     currentPos.set(nextPos);
   }
 
-  const smoothed = indexed.clone();
-  smoothed.setAttribute('position', new THREE.BufferAttribute(nextPos, 3));
-  smoothed.computeVertexNormals();
-  return smoothed;
+  return { positions: nextPos, indices: new Uint32Array(indices) };
+}
+
+/**
+ * Applies Laplacian smoothing iterations to a Three.js geometry (see laplacianSmoothMesh).
+ */
+export function laplacianSmoothGeometry(geometry: THREE.BufferGeometry, iterations = 2, lambda = 0.4): THREE.BufferGeometry {
+  if (iterations <= 0) return geometry;
+  const smoothed = laplacianSmoothMesh(threeGeometryToMeshArrays(geometry), iterations, lambda);
+  return meshArraysToThreeGeometry(smoothed);
+}
+
+/**
+ * Prepares the tool mesh for cutting: optional surface relaxation, optional hole defeaturing
+ * through Manifold simplification. Returns plain arrays; the Manifold route is only taken when
+ * defeaturing is requested, so a non-watertight scan still works for drop-in pockets.
+ */
+export function prepareToolMesh(mod: ManifoldModule, raw: MeshArrays, smoothing: SmoothingConfig | undefined): MeshArrays {
+  let mesh = raw;
+  if (smoothing?.enabled && smoothing.surfaceIterations > 0) {
+    mesh = laplacianSmoothMesh(mesh, smoothing.surfaceIterations);
+  }
+  if (smoothing?.enabled && smoothing.tolerance > 0) {
+    mesh = withScope(scope => {
+      const tool = scope.track(meshArraysToManifold(mod, mesh, 0));
+      const simplified = applyToolSmoothing(tool, smoothing);
+      if (simplified !== tool) scope.track(simplified);
+      return manifoldToMeshArrays(simplified);
+    });
+  }
+  return mesh;
 }
 
 /**
@@ -205,235 +224,110 @@ export function getToolMatrix(transform: ToolTransform): THREE.Matrix4 {
  * Transforms a raw tool manifold using the exact 4x4 matrix from Three.js
  * Guarantees 100% mathematical bit-for-bit match between viewport and boolean cutter!
  */
-export function transformToolManifold(tool: any, transform: ToolTransform): any {
+export function transformToolManifold(tool: Manifold, transform: ToolTransform): Manifold {
   const mat = getToolMatrix(transform);
-  return tool.transform(Array.from(mat.elements));
+  return tool.transform(Array.from(mat.elements) as unknown as Parameters<Manifold['transform']>[0]);
 }
 
 /**
- * Fills internal holes in a CrossSection (e.g. screw holes, voids) so that upward extrusion
- * does not produce unwanted solid plastic posts protruding through the tool pocket.
+ * World-space bounds of a tool mesh under its transform.
  */
-export function fillCrossSectionHoles(mod: ManifoldModule, crossSection: any): any {
-  if (crossSection.isEmpty()) return crossSection;
-  try {
-    const polys = crossSection.toPolygons();
-    if (!polys || polys.length <= 1) {
-      return mod.CrossSection.union([crossSection]);
-    }
-    const outerPolys = polys.filter((pts: number[][]) => {
-      let a = 0;
-      for (let i = 0; i < pts.length; i++) {
-        const p1 = pts[i];
-        const p2 = pts[(i + 1) % pts.length];
-        a += (p1[0] * p2[1] - p2[0] * p1[1]);
-      }
-      return a > 0;
-    });
-    if (outerPolys.length === 0) {
-      return mod.CrossSection.union([crossSection]);
-    }
-    return new mod.CrossSection(outerPolys, mod.fillrule?.Positive ?? 0);
-  } catch (err) {
-    console.warn('fillCrossSectionHoles error:', err);
-    return mod.CrossSection.union([crossSection]);
+export function getTransformedBounds(mesh: MeshArrays, transform: ToolTransform): Bounds3 {
+  const e = getToolMatrix(transform).elements;
+  const pos = mesh.positions;
+  const min: [number, number, number] = [Infinity, Infinity, Infinity];
+  const max: [number, number, number] = [-Infinity, -Infinity, -Infinity];
+  for (let i = 0; i < pos.length; i += 3) {
+    const x = pos[i], y = pos[i + 1], z = pos[i + 2];
+    const wx = e[0] * x + e[4] * y + e[8] * z + e[12];
+    const wy = e[1] * x + e[5] * y + e[9] * z + e[13];
+    const wz = e[2] * x + e[6] * y + e[10] * z + e[14];
+    if (wx < min[0]) min[0] = wx; if (wx > max[0]) max[0] = wx;
+    if (wy < min[1]) min[1] = wy; if (wy > max[1]) max[1] = wy;
+    if (wz < min[2]) min[2] = wz; if (wz > max[2]) max[2] = wz;
   }
+  return { min, max };
 }
 
+/** Pitch and size limits for the depth map used for the real cutter. */
+export const CUTTER_RASTER = { resolution: 0.15, maxCells: 200_000, minResolution: 0.1, maxResolution: 1.0 };
+/** Coarser raster for the live viewport preview. */
+export const PREVIEW_RASTER = { resolution: 0.5, maxCells: 12_000, minResolution: 0.4, maxResolution: 3.0 };
+
 /**
- * Generates an upward cutter to eliminate vertical undercuts / overhangs above the tool,
- * guaranteeing the tool drops freely into and pulls out of the bin vertically.
- * 
- * Supports two modes:
- * 1. 'contour' (default): Multi-slice upward accumulation sweep. Preserves the 3D contoured
- *    cradle at the bottom while sweeping all horizontal cross-sections upward to eliminate undercuts.
- * 2. 'silhouette': 2.5D outer silhouette extrusion from tool bottom up through the bin top.
- * 
- * Handles tools of any height: whether submerged in the bin or protruding tall above the bin.
+ * Builds the drop-in cutter (tool pocket that opens vertically to the bin top) as a Manifold.
+ *
+ * The cutter is the volume above the tool's lower envelope ('contour') or above a flat floor at
+ * the tool's lowest point ('silhouette'), swept up to `binTopZ` plus clearance. Through-holes in
+ * the tool are filled so no plastic posts remain. Features thinner than the raster pitch cannot
+ * be missed: every cell touched by the tool is cut, so the pocket is conservative by at most
+ * 1.5 x pitch (about 0.2 mm) at vertical walls and never intersects the tool.
+ *
+ * Returns null when the transformed tool covers no raster cell (empty mesh).
  */
-export function createExtrudeToTopCutter(
+export function createDropInCutter(
   mod: ManifoldModule,
-  transformedTool: any,
+  toolMesh: MeshArrays,
+  transform: ToolTransform,
   binTopZ: number,
-  mode: 'contour' | 'silhouette' = 'contour'
-): any {
-  const bounds = transformedTool.boundingBox();
-  const zMin = bounds.min[2];
-  const zMax = bounds.max[2];
-  const chimneyTopZ = Math.max(binTopZ + 2, zMax + 2);
-  const totalHeight = zMax - zMin;
-
-  if (totalHeight <= 0.2 || mode === 'silhouette') {
-    const rawProj = transformedTool.project();
-    const proj = fillCrossSectionHoles(mod, rawProj);
-    rawProj.delete();
-    const height = chimneyTopZ - zMin;
-    const chimney = proj.extrude(height).translate([0, 0, zMin]);
-    proj.delete();
-    transformedTool.delete();
-    return chimney;
-  }
-
-  try {
-    const numSlices = Math.min(24, Math.max(8, Math.round(totalHeight / 1.5)));
-    const dz = totalHeight / numSlices;
-    const parts: any[] = [];
-    let accum: any = null;
-
-    for (let i = 0; i < numSlices; i++) {
-      const z0 = zMin + i * dz;
-      const z1 = Math.min(zMax, z0 + dz);
-      const sliceZ = z0 + 0.5 * dz;
-      const slice = transformedTool.slice(sliceZ);
-
-      if (!slice.isEmpty()) {
-        const filledSlice = fillCrossSectionHoles(mod, slice);
-        slice.delete();
-
-        if (!accum) {
-          accum = filledSlice;
-        } else {
-          const next = mod.CrossSection.union([accum, filledSlice]);
-          accum.delete();
-          filledSlice.delete();
-          accum = next;
-        }
-      } else {
-        slice.delete();
-      }
-
-      if (accum && !accum.isEmpty()) {
-        const block = accum.extrude(z1 - z0 + 0.02).translate([0, 0, z0]);
-        parts.push(block);
-      }
+  mode: DropInMode
+): Manifold | null {
+  const matrix = getToolMatrix(transform).elements;
+  const zTop = binTopZ + 2;
+  const result = createDropInCutterMesh(toolMesh.positions, toolMesh.indices, matrix, zTop, mode, CUTTER_RASTER);
+  if (!result) return null;
+  return withScope(scope => {
+    const cutter = scope.track(solidMeshToManifold(mod, result.mesh));
+    // Collapse the flat slab / flat floors; keeps the boolean fast and the export lean.
+    try {
+      return scope.release(cutter.simplify(0.002));
+    } catch (err) {
+      console.warn('Cutter simplification skipped:', err);
+      return scope.release(cutter);
     }
+  });
+}
 
-    if (!accum || accum.isEmpty()) {
-      if (accum) accum.delete();
-      const rawProj = transformedTool.project();
-      accum = fillCrossSectionHoles(mod, rawProj);
-      rawProj.delete();
-    }
-
-    if (chimneyTopZ > zMax && accum && !accum.isEmpty()) {
-      const topChimney = accum.extrude(chimneyTopZ - zMax + 0.05).translate([0, 0, zMax]);
-      parts.push(topChimney);
-    }
-    if (accum) {
-      accum.delete();
-      accum = null;
-    }
-
-    parts.push(transformedTool);
-    const swept = mod.Manifold.union(parts);
-    parts.forEach(p => {
-      try { p.delete(); } catch {}
-    });
-    return swept;
-  } catch (err) {
-    console.warn('Swept tool union failed, falling back to 2D silhouette chimney:', err);
-    const rawProj = transformedTool.project();
-    const proj = fillCrossSectionHoles(mod, rawProj);
-    rawProj.delete();
-    const height = chimneyTopZ - zMin;
-    const chimney = proj.extrude(height).translate([0, 0, zMin]);
-    proj.delete();
-    const combined = mod.Manifold.union([transformedTool, chimney]);
-    chimney.delete();
-    transformedTool.delete();
-    return combined;
-  }
+function solidMeshToManifold(mod: ManifoldModule, solid: SolidMesh): Manifold {
+  const mesh = new mod.Mesh({ numProp: 3, vertProperties: solid.vertProperties, triVerts: solid.triVerts });
+  mesh.merge();
+  return new mod.Manifold(mesh);
 }
 
 /**
- * 2D convex hull calculation (Monotone Chain algorithm) for fast 2D silhouette calculation
- */
-function convexHull2D(points: [number, number][]): [number, number][] {
-  if (points.length <= 2) return points;
-  points.sort((a, b) => a[0] === b[0] ? a[1] - b[1] : a[0] - b[0]);
-  const cross = (o: [number, number], a: [number, number], b: [number, number]) =>
-    (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
-  const lower: [number, number][] = [];
-  for (const p of points) {
-    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) {
-      lower.pop();
-    }
-    lower.push(p);
-  }
-  const upper: [number, number][] = [];
-  for (let i = points.length - 1; i >= 0; i--) {
-    const p = points[i];
-    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) {
-      upper.pop();
-    }
-    upper.push(p);
-  }
-  upper.pop();
-  lower.pop();
-  return lower.concat(upper);
-}
-
-/**
- * Generates Three.js preview geometry showing the upward extrusion volume / chimney in the viewport
+ * Generates Three.js preview geometry of the drop-in cutter for the viewport, using the same
+ * depth-map construction as the real cutter at a coarser pitch, so what is shown is what is cut.
  */
 export function createExtrudePreviewGeometry(
   toolGeometry: THREE.BufferGeometry | null,
   toolTransform: ToolTransform,
-  binTopZ: number
+  binTopZ: number,
+  mode: DropInMode = 'contour'
 ): THREE.BufferGeometry | null {
   if (!toolGeometry) return null;
   const pos = toolGeometry.attributes.position?.array;
   if (!pos || pos.length === 0) return null;
 
-  const mat = getToolMatrix(toolTransform);
-  const e = mat.elements;
-  const pts: [number, number][] = [];
-  const step = Math.max(1, Math.floor(pos.length / (3 * 2000)));
-  let minZ = Infinity, maxZ = -Infinity;
+  const matrix = getToolMatrix(toolTransform).elements;
+  const index = toolGeometry.index ? toolGeometry.index.array : null;
+  const result = createDropInCutterMesh(pos, index, matrix, binTopZ, mode, PREVIEW_RASTER);
+  if (!result) return null;
 
-  for (let i = 0; i < pos.length; i += 3 * step) {
-    const x = pos[i], y = pos[i + 1], z = pos[i + 2];
-    const wx = e[0] * x + e[4] * y + e[8] * z + e[12];
-    const wy = e[1] * x + e[5] * y + e[9] * z + e[13];
-    const wz = e[2] * x + e[6] * y + e[10] * z + e[14];
-    pts.push([wx, wy]);
-    if (wz < minZ) minZ = wz;
-    if (wz > maxZ) maxZ = wz;
-  }
-
-  if (pts.length < 3) return null;
-  const hull = convexHull2D(pts);
-  if (hull.length < 3) return null;
-
-  const chimneyTopZ = Math.max(binTopZ, maxZ);
-  const chimneyBaseZ = maxZ < binTopZ ? maxZ : minZ;
-  const chimneyHeight = Math.max(0.5, chimneyTopZ - chimneyBaseZ);
-
-  const shape = new THREE.Shape();
-  shape.moveTo(hull[0][0], hull[0][1]);
-  for (let i = 1; i < hull.length; i++) {
-    shape.lineTo(hull[i][0], hull[i][1]);
-  }
-  shape.closePath();
-
-  const extrudeGeo = new THREE.ExtrudeGeometry(shape, {
-    depth: chimneyHeight,
-    bevelEnabled: false
-  });
-  extrudeGeo.translate(0, 0, chimneyBaseZ);
-  extrudeGeo.computeVertexNormals();
-  return extrudeGeo;
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(result.mesh.vertProperties, 3));
+  geometry.setIndex(new THREE.BufferAttribute(result.mesh.triVerts, 1));
+  geometry.computeVertexNormals();
+  return geometry;
 }
 
 /**
  * Generates finger pull notch cylinders to subtract from the bin
  */
-export function createFingerNotches(mod: ManifoldModule, toolBounds: { min: number[]; max: number[] }, binTopZ: number, config: NotchConfig): any | null {
+export function createFingerNotches(mod: ManifoldModule, toolBounds: Bounds3, binTopZ: number, config: NotchConfig): Manifold | null {
   if (!config.enabled || config.placement === 'none') {
     return null;
   }
 
-  const notches: any[] = [];
   const r = Math.max(4, config.radius);
   const depth = Math.max(5, config.depth);
   const notchHeight = depth + 5; // extend slightly above bin top
@@ -446,34 +340,29 @@ export function createFingerNotches(mod: ManifoldModule, toolBounds: { min: numb
   const midX = (minX + maxX) / 2;
   const midY = (minY + maxY) / 2;
 
+  const centres: [number, number][] = [];
   if (config.placement === 'left-right' || config.placement === 'all') {
-    // Left notch
-    const left = mod.Manifold.cylinder(notchHeight, r, r, 24, false).translate([minX, midY, zPos]);
-    // Right notch
-    const right = mod.Manifold.cylinder(notchHeight, r, r, 24, false).translate([maxX, midY, zPos]);
-    notches.push(left, right);
+    centres.push([minX, midY], [maxX, midY]);
   }
-
   if (config.placement === 'front-back' || config.placement === 'all') {
-    // Front notch
-    const front = mod.Manifold.cylinder(notchHeight, r, r, 24, false).translate([midX, minY, zPos]);
-    // Back notch
-    const back = mod.Manifold.cylinder(notchHeight, r, r, 24, false).translate([midX, maxY, zPos]);
-    notches.push(front, back);
+    centres.push([midX, minY], [midX, maxY]);
   }
+  if (centres.length === 0) return null;
 
-  if (notches.length === 0) return null;
-  if (notches.length === 1) return notches[0];
-  const union = mod.Manifold.union(notches);
-  notches.forEach(n => n.delete());
-  return union;
+  return withScope(scope => {
+    const notches = centres.map(([x, y]) =>
+      scope.track(mod.Manifold.cylinder(notchHeight, r, r, 24, false).translate([x, y, zPos]))
+    );
+    if (notches.length === 1) return scope.release(notches[0]);
+    return scope.release(mod.Manifold.union(notches));
+  });
 }
 
 /**
  * Creates Three.js geometry for previewing finger notches in the viewport
  */
 export function createFingerNotchesThreeGeometry(
-  toolBounds: { min: number[]; max: number[] },
+  toolBounds: Bounds3,
   binTopZ: number,
   config: NotchConfig
 ): THREE.BufferGeometry | null {
@@ -491,36 +380,22 @@ export function createFingerNotchesThreeGeometry(
   const midX = (minX + maxX) / 2;
   const midY = (minY + maxY) / 2;
 
-  const geometries: THREE.BufferGeometry[] = [];
-
+  const centres: [number, number][] = [];
   if (config.placement === 'left-right' || config.placement === 'all') {
-    const left = new THREE.CylinderGeometry(r, r, depth, 24);
-    left.translate(minX, zCenter, midY); // In Three.js Z-up or Y-up?
-    // In our scene, Z is up! Cylinder default orientation has Y along cylinder axis.
-    // So rotate cylinder so its height is along Z:
-    left.rotateX(Math.PI / 2);
-    left.translate(minX, midY, zCenter);
-    geometries.push(left);
-
-    const right = new THREE.CylinderGeometry(r, r, depth, 24);
-    right.rotateX(Math.PI / 2);
-    right.translate(maxX, midY, zCenter);
-    geometries.push(right);
+    centres.push([minX, midY], [maxX, midY]);
   }
-
   if (config.placement === 'front-back' || config.placement === 'all') {
-    const front = new THREE.CylinderGeometry(r, r, depth, 24);
-    front.rotateX(Math.PI / 2);
-    front.translate(midX, minY, zCenter);
-    geometries.push(front);
-
-    const back = new THREE.CylinderGeometry(r, r, depth, 24);
-    back.rotateX(Math.PI / 2);
-    back.translate(midX, maxY, zCenter);
-    geometries.push(back);
+    centres.push([midX, minY], [midX, maxY]);
   }
+  if (centres.length === 0) return null;
 
-  if (geometries.length === 0) return null;
+  // CylinderGeometry's axis is Y; our scene is Z-up, so rotate the axis onto Z first.
+  const geometries = centres.map(([x, y]) => {
+    const cyl = new THREE.CylinderGeometry(r, r, depth, 24);
+    cyl.rotateX(Math.PI / 2);
+    cyl.translate(x, y, zCenter);
+    return cyl;
+  });
   return BufferGeometryUtils.mergeGeometries(geometries);
 }
 
@@ -634,14 +509,11 @@ export function computeToolWallClearance(
 }
 
 /**
- * Exports a Manifold object to a binary STL ArrayBuffer and triggers download
+ * Serialises a triangle mesh to a binary STL buffer.
  */
-export function exportManifoldToBinarySTL(manifold: any, filename = 'gridfinity-custom-bin.stl') {
-  const mesh = manifold.getMesh();
-  const numTri = mesh.numTri;
-  const numProp = mesh.numProp;
-  const verts = mesh.vertProperties;
-  const triVerts = mesh.triVerts;
+export function meshArraysToBinarySTL(mesh: MeshArrays): ArrayBuffer {
+  const { positions: verts, indices: triVerts } = mesh;
+  const numTri = triVerts.length / 3;
 
   const bufferSize = 84 + numTri * 50;
   const buffer = new ArrayBuffer(bufferSize);
@@ -662,54 +534,36 @@ export function exportManifoldToBinarySTL(manifold: any, filename = 'gridfinity-
     const i1 = triVerts[t * 3 + 1];
     const i2 = triVerts[t * 3 + 2];
 
-    const v0x = verts[i0 * numProp];
-    const v0y = verts[i0 * numProp + 1];
-    const v0z = verts[i0 * numProp + 2];
-
-    const v1x = verts[i1 * numProp];
-    const v1y = verts[i1 * numProp + 1];
-    const v1z = verts[i1 * numProp + 2];
-
-    const v2x = verts[i2 * numProp];
-    const v2y = verts[i2 * numProp + 1];
-    const v2z = verts[i2 * numProp + 2];
+    const v0x = verts[i0 * 3], v0y = verts[i0 * 3 + 1], v0z = verts[i0 * 3 + 2];
+    const v1x = verts[i1 * 3], v1y = verts[i1 * 3 + 1], v1z = verts[i1 * 3 + 2];
+    const v2x = verts[i2 * 3], v2y = verts[i2 * 3 + 1], v2z = verts[i2 * 3 + 2];
 
     // Compute face normal: (v1 - v0) x (v2 - v0)
-    const ax = v1x - v0x;
-    const ay = v1y - v0y;
-    const az = v1z - v0z;
-    const bx = v2x - v0x;
-    const by = v2y - v0y;
-    const bz = v2z - v0z;
+    const ax = v1x - v0x, ay = v1y - v0y, az = v1z - v0z;
+    const bx = v2x - v0x, by = v2y - v0y, bz = v2z - v0z;
 
     let nx = ay * bz - az * by;
     let ny = az * bx - ax * bz;
     let nz = ax * by - ay * bx;
     const len = Math.hypot(nx, ny, nz);
     if (len > 1e-6) {
-      nx /= len;
-      ny /= len;
-      nz /= len;
+      nx /= len; ny /= len; nz /= len;
     } else {
       nx = 0; ny = 0; nz = 1;
     }
 
-    // Normal vector
     view.setFloat32(offset, nx, true); offset += 4;
     view.setFloat32(offset, ny, true); offset += 4;
     view.setFloat32(offset, nz, true); offset += 4;
 
-    // Vertex 1
     view.setFloat32(offset, v0x, true); offset += 4;
     view.setFloat32(offset, v0y, true); offset += 4;
     view.setFloat32(offset, v0z, true); offset += 4;
 
-    // Vertex 2
     view.setFloat32(offset, v1x, true); offset += 4;
     view.setFloat32(offset, v1y, true); offset += 4;
     view.setFloat32(offset, v1z, true); offset += 4;
 
-    // Vertex 3
     view.setFloat32(offset, v2x, true); offset += 4;
     view.setFloat32(offset, v2y, true); offset += 4;
     view.setFloat32(offset, v2z, true); offset += 4;
@@ -718,7 +572,13 @@ export function exportManifoldToBinarySTL(manifold: any, filename = 'gridfinity-
     view.setUint16(offset, 0, true); offset += 2;
   }
 
-  // Trigger download
+  return buffer;
+}
+
+/**
+ * Triggers a browser download of a binary STL buffer.
+ */
+export function downloadBinarySTL(buffer: ArrayBuffer, filename = 'gridfinity-custom-bin.stl') {
   const blob = new Blob([buffer], { type: 'application/octet-stream' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');

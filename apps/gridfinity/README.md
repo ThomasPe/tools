@@ -25,10 +25,10 @@ Powered by **libmanifold (`manifold-3d`) WebAssembly** and **Three.js**.
 - **Fit & Clearance (Scaling)**:
   - Clearance scaling slider ($100\%$ to $115\%$, default $102\%$ recommended for 3D printer tolerances).
 - **Slot Ergonomics**:
-  - **Extrude to Top (Remove Undercuts)**: Automatically sweeps the tool's upward silhouette to the bin top surface so tools with bulges/overhangs drop in and pull out vertically without getting locked in.
+  - **Extrude to Top (Remove Undercuts)**: Builds the pocket from a minimum-z depth map of the tool (the "shadow foam" approach), so every overhang, flange or collar is swept up to the bin top (stacking lip included) and the tool drops in and pulls out vertically. The raster is conservative: nothing thinner than a cell can be missed, through-holes are filled so no posts remain, and the pocket never intersects the tool (it widens by at most ~0.2 mm at vertical walls). Choose a 3D contoured cradle or a flat 2.5D floor. Because no boolean on the tool itself is needed, non-watertight scans work in this mode.
   - **Finger Pull Notches**: Parametric cylindrical side cutouts (Left/Right, Front/Back, or all 4 sides) for easy fingertip removal.
 - **Watertight Binary STL Export**:
-  - Sub-second CSG boolean difference using `manifold-3d`.
+  - Sub-second CSG boolean difference using `manifold-3d`, running in a dedicated Web Worker so the UI never freezes; a WASM memory trap restarts the worker automatically.
   - Watertight 2-manifold output guaranteed compatible with Bambu Studio, PrusaSlicer, OrcaSlicer, and Cura.
   - Zero server dependencies: 100% runs on your device in the browser.
 
@@ -42,7 +42,7 @@ Powered by **libmanifold (`manifold-3d`) WebAssembly** and **Three.js**.
 
 ### 2. Install & Start Development Server
 ```bash
-cd apps/gridfinity-tool-slot
+cd apps/gridfinity
 pnpm install
 pnpm dev
 ```
@@ -54,6 +54,13 @@ pnpm run build
 pnpm run preview
 ```
 
+### 4. Geometry Tests
+The geometry modules are plain TypeScript and run in Node (type stripping, Node 22+) against the real `manifold-3d` WASM. From the repository root:
+```bash
+npm test
+```
+`test/test-gridfinity-geometry.mjs` probes the generated solids with booleans: no material above overhangs, no posts in through-holes, no intersection with the tool, stacking lip opened above the pocket.
+
 ---
 
 ## 🏗️ Architecture
@@ -63,8 +70,13 @@ gridfinity-tool-slot/
 ├── src/
 │   ├── geometry/
 │   │   ├── gridfinity.ts        # Gridfinity standard specification & polyomino generator
-│   │   ├── meshUtils.ts         # Three.js <-> Manifold mesh converter & binary STL exporter
-│   │   ├── manifoldInit.ts      # Manifold WASM singleton initializer
+│   │   ├── heightfield.ts       # Depth-map (lower envelope) construction of drop-in pockets, pure TS
+│   │   ├── meshUtils.ts         # Mesh conversion, drop-in cutter, notches, clearance, binary STL
+│   │   ├── csgPipeline.ts       # Bin + cutout pipeline on plain arrays (worker and Node tests)
+│   │   ├── csg.worker.ts        # Web Worker owning the Manifold WASM instance
+│   │   ├── csgClient.ts         # Promise API for the worker with automatic restart after WASM traps
+│   │   ├── csgProtocol.ts       # Worker message types
+│   │   ├── scope.ts             # Ownership helper that releases WASM objects, also on exceptions
 │   │   └── sampleTools.ts       # Built-in sample tools (Caliper, Wrench, Hex bit)
 │   ├── components/
 │   │   ├── GridEditor.tsx       # 2D interactive tile matrix & polyomino presets

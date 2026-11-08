@@ -40,7 +40,7 @@
 * **Key Capabilities:**
   * **2D Polyomino Grid Footprint:** Interactive tile editor with Gridfinity standard 3.75 mm rounded corners and 42 mm base stacking profiles.
   * **3D Transform Gizmo:** Upload custom tool STLs or pick built-in presets; position, rotate, and scale in real-time with automatic center & drop-to-surface helpers.
-  * **Undercut Removal:** Automated silhouette extrusion ("extrude to top") guarantees tools with overhanging bulges pull straight out vertically.
+  * **Undercut Removal:** Depth-map based "extrude to top" pockets guarantee tools with overhanging bulges, flanges or collars pull straight out vertically, with a contoured or flat floor.
   * **Ergonomics & Sockets:** Parametric finger pull notches, customizable floor thickness, and optional base magnet holes.
   * **Instant STL Export:** Sub-second CSG boolean difference in WebAssembly, exporting watertight binary STLs ready for slicers.
 
