@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Generate a 3D-printable wave-shaped rack for cutting boards, plates or books. Configure length, depth, height and wave count, preview it live and download a print-ready STL. Runs 100% in your browser.">
+  <meta name="description" content="Generate a 3D-printable rack for cutting boards, plates or books. Set a flat floor width per slot, pick a wall shape from classic wave to slim dividers, preview it live and download a print-ready STL. Runs 100% in your browser.">
   <title>Wave Rack Generator | pentenrieder.dev</title>
 
   <!-- Open Graph -->
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://tools.pentenrieder.dev/wave-rack/">
   <meta property="og:title" content="Wave Rack Generator | pentenrieder.dev">
-  <meta property="og:description" content="Generate a 3D-printable wave-shaped rack for cutting boards, plates or books. Configure length, depth, height and wave count, preview it live and download a print-ready STL.">
+  <meta property="og:description" content="Generate a 3D-printable rack for cutting boards, plates or books. Set a flat floor width per slot, pick a wall shape from classic wave to slim dividers, preview it live and download a print-ready STL.">
   <meta property="og:image" content="https://tools.pentenrieder.dev/og-image.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
@@ -19,7 +19,7 @@
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:url" content="https://tools.pentenrieder.dev/wave-rack/">
   <meta name="twitter:title" content="Wave Rack Generator | pentenrieder.dev">
-  <meta name="twitter:description" content="Generate a 3D-printable wave-shaped rack for cutting boards, plates or books. Configure length, depth, height and wave count, preview it live and download a print-ready STL.">
+  <meta name="twitter:description" content="Generate a 3D-printable rack for cutting boards, plates or books. Set a flat floor width per slot, pick a wall shape from classic wave to slim dividers, preview it live and download a print-ready STL.">
   <meta name="twitter:image" content="https://tools.pentenrieder.dev/og-image.png">
 
   <!-- Privacy-friendly analytics by Plausible -->
@@ -142,8 +142,8 @@
     .viewer canvas {
       display: block;
       width: 100%;
-      height: min(62vh, 640px);
-      min-height: 320px;
+      height: min(52vh, 520px);
+      min-height: 300px;
       border-radius: 14px;
       background: radial-gradient(ellipse at 50% 20%, #1b2740, #0a0f1d 80%);
       touch-action: none;
@@ -167,6 +167,23 @@
     .notes strong { color: var(--text); }
 
     footer { margin-top: 36px; color: var(--muted); font-size: 13px; text-align: center; }
+    h2.section { margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--border); }
+    .presets { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+    .presets button {
+      padding: 6px 11px; border: 1px solid var(--border); border-radius: 999px;
+      background: transparent; color: var(--muted); cursor: pointer; font-size: 12px; font-weight: 600;
+    }
+    .presets button:hover { color: var(--text); border-color: var(--muted); }
+    .presets button.active { color: var(--accent); border-color: var(--accent); background: rgba(113, 217, 194, .08); }
+
+    .profile { margin-top: 14px; padding: 12px 14px 8px; border-radius: 14px; background: var(--surface-raised); }
+    .profile-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; margin-bottom: 6px; font-size: 13px; font-weight: 600; }
+    .profile-head .hint { font-weight: 400; font-size: 12px; }
+    .profile svg { display: block; width: 100%; max-height: 260px; }
+    .profile .rack { fill: var(--accent); }
+    .profile .board { fill: #e2b877; fill-opacity: .5; stroke: #e2b877; stroke-opacity: .8; stroke-width: .4; }
+    .profile .ground { stroke: #51658a; stroke-width: .5; }
+    .profile text { fill: var(--muted); font-family: inherit; }
   </style>
 </head>
 <body>
@@ -180,69 +197,113 @@
       <div class="eyebrow">3D Printing / CAD</div>
       <h1>Wave Rack Generator</h1>
       <p>
-        A parametric, wave-shaped rack for cutting boards, plates, lids or books. Set length, depth, height and the number of waves,
-        check the live preview and download a print-ready STL. The part is exported lying on its side so every layer follows the
-        curve &mdash; strong layer lines, no supports, nothing leaves your browser.
+        A parametric rack for cutting boards, plates, lids or books. Give every slot a flat floor as wide as the board it holds,
+        pick a wall shape from classic wave to slim dividers, check the live preview and download a print-ready STL. The part is
+        exported lying on its side so every layer follows the profile &mdash; strong layer lines, no supports, nothing leaves your browser.
       </p>
     </header>
 
     <div class="layout">
       <section class="card" aria-label="Parameters">
-        <h2>Dimensions</h2>
-
+        <h2>Slots</h2>
         <div class="mode-seg" role="group" aria-label="Slot layout">
-          <button type="button" id="modeUniform" class="active">Uniform waves</button>
-          <button type="button" id="modeCustom">Custom slot widths</button>
+          <button type="button" id="modeEven" class="active">Even slots</button>
+          <button type="button" id="modeCustom">Custom slots</button>
         </div>
 
-        <div class="field" id="lengthField">
-          <div class="field-head"><label for="length">Length</label><span class="unit" id="lengthUnit">mm &middot; along the wave</span></div>
-          <div class="field-row">
-            <input type="range" id="lengthRange" min="80" max="600" step="1">
-            <input type="number" id="length" min="40" max="1000" step="1">
+        <div id="evenFields">
+          <div class="field">
+            <div class="field-head"><label for="length">Length</label><span class="unit">mm</span></div>
+            <div class="field-row">
+              <input type="range" id="lengthRange" min="80" max="600" step="1">
+              <input type="number" id="length" min="40" max="1000" step="1">
+            </div>
           </div>
-          <p class="help" id="lengthHelp" hidden>Derived from the slot widths plus the wall thickness.</p>
+          <div class="field">
+            <div class="field-head"><label for="count">Slots</label><span class="unit">count</span></div>
+            <div class="field-row">
+              <input type="range" id="countRange" min="1" max="12" step="1">
+              <input type="number" id="count" min="1" max="40" step="1">
+            </div>
+            <p class="help" id="evenHelp"></p>
+          </div>
         </div>
 
+        <div class="field" id="customFields" hidden>
+          <div class="field-head"><label>Floor width per slot</label><span class="unit">mm &middot; left to right</span></div>
+          <div class="slot-list" id="slotList"></div>
+          <div class="slot-actions">
+            <button type="button" class="btn btn-ghost btn-small" id="addSlot">+ Add slot</button>
+          </div>
+          <p class="help">The flat floor each board stands on: board thickness plus a little play. 0 gives a pointed valley. <span id="customHelp"></span></p>
+        </div>
+
+        <h2 class="section">Size</h2>
         <div class="field">
           <div class="field-head"><label for="depth">Depth</label><span class="unit">mm &middot; print height</span></div>
           <div class="field-row">
             <input type="range" id="depthRange" min="30" max="300" step="1">
             <input type="number" id="depth" min="10" max="500" step="1">
           </div>
-          <p class="help">How deep the boards sit in the rack. This becomes the Z height of the print.</p>
         </div>
-
         <div class="field">
-          <div class="field-head"><label for="height">Height</label><span class="unit">mm &middot; crest top</span></div>
+          <div class="field-head"><label for="height">Height</label><span class="unit">mm &middot; top of the walls</span></div>
           <div class="field-row">
             <input type="range" id="heightRange" min="15" max="200" step="1">
             <input type="number" id="height" min="10" max="400" step="1">
           </div>
         </div>
 
-        <div class="field" id="wavesField">
-          <div class="field-head"><label for="waves">Waves</label><span class="unit">count &middot; frequency</span></div>
-          <div class="field-row">
-            <input type="range" id="wavesRange" min="1" max="12" step="1">
-            <input type="number" id="waves" min="1" max="40" step="1">
-          </div>
-          <p class="help">Number of full waves, evenly spaced along the length.</p>
+        <h2 class="section">Wall shape</h2>
+        <div class="presets" role="group" aria-label="Shape presets">
+          <button type="button" data-preset="arches">Arches</button>
+          <button type="button" data-preset="slim">Slim dividers</button>
+          <button type="button" data-preset="trapezoid">Trapezoid</button>
+          <button type="button" data-preset="soft">Soft wave</button>
+          <button type="button" data-preset="classic">Classic wave</button>
+        </div>
+        <div class="mode-seg" role="group" aria-label="Wall style">
+          <button type="button" id="styleFillet" class="active">Straight + rounded</button>
+          <button type="button" id="styleSine">Wave</button>
         </div>
 
-        <div class="field" id="slotsField" hidden>
-          <div class="field-head"><label>Slot widths</label><span class="unit">mm &middot; left to right</span></div>
-          <div class="slot-list" id="slotList"></div>
-          <div class="slot-actions">
-            <button type="button" class="btn btn-ghost btn-small" id="addSlot">+ Add slot</button>
-            <button type="button" class="btn btn-ghost btn-small" id="addWideSlot">+ Add wide slot</button>
+        <div id="filletFields">
+          <div class="field">
+            <div class="field-head"><label for="angle">Wall lean</label><span class="unit">&deg; from vertical</span></div>
+            <div class="field-row">
+              <input type="range" id="angleRange" min="3" max="45" step="1">
+              <input type="number" id="angle" min="3" max="60" step="1">
+            </div>
           </div>
-          <p class="help">Give thick boards wider slots and thin ones narrower slots. A slot is measured crest to crest; with troughs at both ends, the first and last slots are open and measured from the end of the rack to the first crest.</p>
+          <div class="field">
+            <div class="field-head"><label for="radius">Corner radius</label><span class="unit">mm</span></div>
+            <div class="field-row">
+              <input type="range" id="radiusRange" min="1" max="40" step="0.5">
+              <input type="number" id="radius" min="1" max="200" step="0.5">
+            </div>
+            <p class="help">Small values give crisp corners, large ones turn the walls into soft arcs.</p>
+          </div>
+        </div>
+        <div id="sineFields" hidden>
+          <div class="field">
+            <div class="field-head"><label for="flank">Flank width</label><span class="unit">mm</span></div>
+            <div class="field-row">
+              <input type="range" id="flankRange" min="10" max="80" step="0.5">
+              <input type="number" id="flank" min="5" max="300" step="0.5">
+            </div>
+            <p class="help">Horizontal run of one wave flank. Narrower is steeper.</p>
+          </div>
+        </div>
+        <div class="field">
+          <div class="field-head"><label for="plateau">Flat top</label><span class="unit">mm</span></div>
+          <div class="field-row">
+            <input type="range" id="plateauRange" min="0" max="40" step="0.5">
+            <input type="number" id="plateau" min="0" max="200" step="0.5">
+          </div>
         </div>
 
         <details>
           <summary>Fine tuning</summary>
-
           <div class="field">
             <div class="field-head"><label for="wall">Wall thickness</label><span class="unit">mm</span></div>
             <div class="field-row">
@@ -250,31 +311,21 @@
               <input type="number" id="wall" min="1" max="40" step="0.5">
             </div>
           </div>
-
           <div class="field">
-            <div class="field-head"><label for="foot">Flat feet</label><span class="unit">mm</span></div>
+            <div class="field-head"><label for="endFoot">End feet</label><span class="unit">mm</span></div>
             <div class="field-row">
-              <input type="range" id="footRange" min="0" max="4" step="0.25">
-              <input type="number" id="foot" min="0" max="20" step="0.25">
+              <input type="range" id="endFootRange" min="0" max="40" step="1">
+              <input type="number" id="endFoot" min="0" max="200" step="1">
             </div>
-            <p class="help">Trims the bottom of each trough by this amount so the rack stands on small flat pads instead of a tangent line. 0 keeps the pure curve.</p>
+            <p class="help">Flat foot outside the two outer walls. Adds stability and bed adhesion.</p>
           </div>
-
           <div class="field">
-            <div class="field-head"><label for="ends">Ends</label></div>
-            <select id="ends">
-              <option value="floor">Troughs at both ends (rests on the floor)</option>
-              <option value="top">Crests at both ends (raised ends)</option>
-            </select>
-          </div>
-
-          <div class="field">
-            <div class="field-head"><label for="segments">Smoothness</label><span class="unit">segments per wave</span></div>
+            <div class="field-head"><label for="segments">Smoothness</label><span class="unit">curve resolution</span></div>
             <select id="segments">
-              <option value="24">Draft (24)</option>
-              <option value="48" selected>Standard (48)</option>
-              <option value="96">Fine (96)</option>
-              <option value="160">Ultra (160)</option>
+              <option value="24">Draft</option>
+              <option value="48" selected>Standard</option>
+              <option value="96">Fine</option>
+              <option value="160">Ultra</option>
             </select>
           </div>
         </details>
@@ -299,22 +350,27 @@
         </div>
         <canvas id="viewport"></canvas>
 
+        <div class="profile">
+          <div class="profile-head"><span>Side profile</span><span class="hint">Boards drawn at the full floor width</span></div>
+          <svg id="profile" role="img" aria-label="Side profile of the rack with boards in the slots"></svg>
+        </div>
+
         <div class="stats">
-          <div class="stat"><div class="stat-label">Slot widths</div><div class="stat-value" id="statPitch">&ndash;</div></div>
-          <div class="stat"><div class="stat-label">Max. slope</div><div class="stat-value" id="statSlope">&ndash;</div></div>
+          <div class="stat"><div class="stat-label">Floor widths</div><div class="stat-value" id="statFloors">&ndash;</div></div>
+          <div class="stat"><div class="stat-label">Length</div><div class="stat-value" id="statLength">&ndash;</div></div>
+          <div class="stat"><div class="stat-label">Wall slope</div><div class="stat-value" id="statSlope">&ndash;</div></div>
           <div class="stat"><div class="stat-label">Bed footprint</div><div class="stat-value" id="statFootprint">&ndash;</div></div>
           <div class="stat"><div class="stat-label">Print height</div><div class="stat-value" id="statPrintHeight">&ndash;</div></div>
           <div class="stat"><div class="stat-label">Volume</div><div class="stat-value" id="statVolume">&ndash;</div></div>
-          <div class="stat"><div class="stat-label">Triangles</div><div class="stat-value" id="statTriangles">&ndash;</div></div>
         </div>
 
         <div class="notes">
           <h2>Printing notes</h2>
           <ul>
-            <li><strong>Orientation:</strong> the STL is already lying on its side (wave profile on the bed, depth = Z). Just import and slice.</li>
+            <li><strong>Orientation:</strong> the STL is already lying on its side (profile on the bed, depth = Z). Just import and slice.</li>
             <li><strong>No supports:</strong> the part is a straight vertical extrusion, so there are no overhangs at all.</li>
             <li><strong>Adhesion:</strong> the footprint is a thin, curvy wall. Use a brim (5&ndash;8 mm) for tall prints and keep the first layer slow.</li>
-            <li><strong>Strength:</strong> because every layer contains the whole wave, bending loads are carried inside the layers rather than across them. 3&ndash;4 perimeters recommended.</li>
+            <li><strong>Strength:</strong> because every layer contains the whole profile, bending loads are carried inside the layers rather than across them. 3&ndash;4 perimeters recommended.</li>
           </ul>
         </div>
       </section>
@@ -327,121 +383,91 @@
 
   <script id="wave-geometry">
     // ---------------------------------------------------------------------
-    // Geometry: a sine-wave ribbon of constant wall thickness, extruded along
-    // the depth axis. Coordinates in "use" orientation: X = length,
-    // Y = depth (into the rack), Z = height (up).
+    // Geometry: a ribbon of constant wall thickness that alternates between
+    // flat floors (where the boards stand) and walls (flank up, optional
+    // plateau, flank down), extruded along the depth axis.
+    // Coordinates in "use" orientation: X = length, Y = depth, Z = height.
+    //
+    //   end foot | wall 0 | floor 1 | wall 1 | ... | floor N | wall N | end foot
+    //
+    // The ribbon is described by its centerline (points + unit tangents) and
+    // offset by half the wall thickness to both sides.
     // ---------------------------------------------------------------------
     const WaveGeometry = (() => {
       const DEFAULTS = Object.freeze({
+        mode: 'even',      // 'even': length + slot count, floor width derived; 'custom': floor width per slot, length derived
         length: 300,
+        count: 4,          // even mode: number of slots
+        slots: [],         // custom mode: flat floor width of every slot in mm, left to right
         depth: 120,
         height: 60,
-        waves: 4,
         wall: 5,
-        foot: 1,
-        ends: 'floor',
-        segments: 48,
-        mode: 'uniform',   // 'uniform' (length + waves) or 'custom' (explicit slot widths)
-        slots: []          // custom mode: slot widths in mm, left to right
+        style: 'fillet',   // 'fillet': straight walls with rounded corners; 'sine': classic wave flank
+        flank: 30,         // sine: horizontal run of one flank in mm
+        angle: 10,         // fillet: lean of the walls from vertical in degrees
+        radius: 6,         // fillet: corner radius of the centerline in mm
+        plateau: 0,        // flat width on top of every wall in mm
+        endFoot: 10,       // flat foot outside the two outer walls in mm
+        segments: 48
       });
 
-      // Turns the parameters into a list of half-waves (each a smooth rise or
-      // fall of horizontal width w). Uniform mode: 2 × waves equal halves.
-      // Custom mode: every slot is a full valley measured crest to crest, except
-      // that with troughs at both ends the first and last slots are open
-      // half-waves measured from the end of the rack to the first crest.
-      function layout(p) {
-        const halves = [];
-        if (p.mode === 'custom') {
-          const slots = (p.slots || []).map(Number);
-          if (p.ends === 'top') {
-            for (const w of slots) halves.push(w / 2, w / 2);
-          } else {
-            slots.forEach((w, i) => {
-              if (i === 0 || i === slots.length - 1) halves.push(w);
-              else halves.push(w / 2, w / 2);
-            });
-          }
+      const END_MARGIN = 0.3; // extra flat before a folded corner so the crease never touches an end cap
+
+      // ----- Flank shapes -------------------------------------------------
+      // A flank is returned as points of an upward run in local coordinates:
+      // { s (horizontal), z (above the floor centerline), tx, tz (unit tangent) }
+      // starting at (0, 0) and ending at (run, rise), both with a horizontal tangent.
+
+      function sineFlank(p, rise) {
+        const F = p.flank;
+        const n = Math.max(16, Math.round(p.segments / 2));
+        const pts = [];
+        for (let i = 0; i <= n; i++) {
+          // Cosine-spaced samples: dense where the curvature is highest.
+          const s = F * (1 - Math.cos(Math.PI * i / n)) / 2;
+          const u = Math.PI * s / F;
+          const dz = rise * Math.PI / (2 * F) * Math.sin(u);
+          const len = Math.hypot(1, dz);
+          pts.push({ s, z: rise * (1 - Math.cos(u)) / 2, tx: 1 / len, tz: dz / len });
+        }
+        return { pts, run: F, slopeDeg: Math.atan(rise * Math.PI / (2 * F)) * 180 / Math.PI, radius: null };
+      }
+
+      function filletFlank(p, rise) {
+        const R = p.radius;
+        let beta = (90 - p.angle) * Math.PI / 180;       // slope of the straight part
+        let straight = 0;
+        if (2 * R * (1 - Math.cos(beta)) >= rise) {
+          // The two corner arcs alone already cover the rise: the flank
+          // becomes a soft S made of two arcs with a shallower slope.
+          beta = Math.acos(1 - rise / (2 * R));
         } else {
-          const half = (p.length - p.wall) / p.waves / 2;
-          for (let i = 0; i < 2 * p.waves; i++) halves.push(half);
+          straight = (rise - 2 * R * (1 - Math.cos(beta))) / Math.sin(beta);
         }
-        const span = halves.reduce((a, b) => a + b, 0);
-        const crests = p.ends === 'top' ? halves.length / 2 + 1 : halves.length / 2;
-        return { halves, span, length: span + p.wall, crests, minHalf: Math.min(...halves), maxHalf: Math.max(...halves) };
+        const nArc = Math.max(4, Math.ceil(beta / (Math.PI / p.segments)));
+        const pts = [];
+        for (let i = 0; i <= nArc; i++) {                 // bottom corner, turning up
+          const phi = beta * i / nArc;
+          pts.push({ s: R * Math.sin(phi), z: R * (1 - Math.cos(phi)), tx: Math.cos(phi), tz: Math.sin(phi) });
+        }
+        const a = pts[pts.length - 1];
+        const bs = a.s + straight * Math.cos(beta), bz = a.z + straight * Math.sin(beta);
+        const cx = bs + R * Math.sin(beta), cz = bz - R * Math.cos(beta); // centre of the top corner
+        for (let i = straight > 1e-9 ? 0 : 1; i <= nArc; i++) { // top corner, turning back to horizontal
+          const psi = beta * (1 - i / nArc);
+          pts.push({ s: cx - R * Math.sin(psi), z: cz + R * Math.cos(psi), tx: Math.cos(psi), tz: Math.sin(psi) });
+        }
+        const last = pts[pts.length - 1];
+        last.z = rise; last.tx = 1; last.tz = 0;
+        return { pts, run: last.s, slopeDeg: beta * 180 / Math.PI, radius: R };
       }
 
-      function effectiveLength(p) { return layout(p).length; }
-
-      function validate(p) {
-        const errors = [];
-        const warnings = [];
-        const custom = p.mode === 'custom';
-        if (!(p.depth > 0) || !(p.height > 0) || !(p.wall > 0) || (!custom && (!(p.length > 0) || !(p.waves >= 1)))) {
-          errors.push('All dimensions must be positive numbers.');
-          return { errors, warnings };
-        }
-        if (custom) {
-          const slots = p.slots || [];
-          const minSlots = p.ends === 'top' ? 1 : 2;
-          if (slots.length < minSlots) errors.push(`Add at least ${minSlots} slot${minSlots > 1 ? 's' : ''} (with troughs at both ends the first and last slots are the open ends).`);
-          if (slots.some(w => !(w >= 5))) errors.push('Every slot must be at least 5 mm wide.');
-          const inner = p.ends === 'top' ? slots : slots.slice(1, -1);
-          if (inner.some(w => w < p.wall + 3)) errors.push(`Slots between two crests must be at least ${p.wall + 3} mm wide (wall thickness + 3 mm), otherwise the wall fills the slot.`);
-        }
-        if (p.wall >= p.height) errors.push('Wall thickness must be smaller than the height.');
-        if (p.foot >= p.wall / 2) errors.push(`Flat feet must be below half the wall thickness (max ${(p.wall / 2 - 0.25).toFixed(2)} mm).`);
-        if (errors.length) return { errors, warnings };
-        const lay = layout(p);
-        if (p.wall >= lay.length / 2) errors.push('Wall thickness must be much smaller than the length.');
-        if (!custom && lay.halves[0] * 2 < p.wall + 3) errors.push(`With ${p.waves} waves each slot is only ${(lay.halves[0] * 2).toFixed(1)} mm wide; use fewer waves or a longer rack.`);
-        if (errors.length) return { errors, warnings };
-
-        const r = p.wall / 2;
-        const A = (p.height + p.foot - p.wall) / 2;
-        // Interior crests and troughs may be tighter than the wall (their inner
-        // side is merged into a crease), but the two end caps need a clean
-        // offset, so the end half-waves limit the curvature.
-        const endHalf = Math.min(lay.halves[0], lay.halves[lay.halves.length - 1]);
-        const kEnd = Math.PI / endHalf;                    // equals 2π/λ for a uniform wave
-        const minRadius = A > 0 ? 1 / (A * kEnd * kEnd) : Infinity;
-        const maxWall = Math.max(0, 2 * (minRadius - 0.3));
-        if (minRadius <= r + 0.3) {
-          const minEnd = Math.ceil(Math.PI * Math.sqrt(A * (r + 0.3)));
-          errors.push(custom
-            ? `The ${p.ends === 'top' ? 'outer' : 'open end'} slots are too narrow for a ${p.wall} mm wall: the end caps would fold over. ` +
-              `Make them at least ${p.ends === 'top' ? minEnd * 2 : minEnd} mm wide, lower the height, or reduce the wall to ${Math.floor(maxWall * 2) / 2} mm or less.`
-            : `The wave is too tight for a ${p.wall} mm wall: the inner side of the crests would fold over. ` +
-              `Lower the height, use fewer waves, make it longer, or reduce the wall to ${Math.floor(maxWall * 2) / 2} mm or less.`);
-        }
-        const k = Math.PI / lay.minHalf;
-        const slopeDeg = Math.atan(A * k) * 180 / Math.PI;
-        if (slopeDeg > 75) warnings.push(`Very steep flanks (${slopeDeg.toFixed(0)}°). Boards may rest only on the tips; consider a lower height or wider slots.`);
-        if (lay.minHalf * 2 < 25) warnings.push(`The narrowest slot is only ${(lay.minHalf * 2).toFixed(1)} mm wide, which is narrow for cutting boards.`);
-        if (p.depth > 250) warnings.push(`Print height ${p.depth} mm: check that your printer's Z travel allows this.`);
-        return { errors, warnings, lambda: lay.minHalf * 2, slopeDeg, minRadius, maxWall, length: lay.length, crests: lay.crests };
+      function buildFlank(p) {
+        const rise = p.height - p.wall;
+        return p.style === 'sine' ? sineFlank(p, rise) : filletFlank(p, rise);
       }
 
-      function clipPolylineAboveZero(pts) {
-        // Clips an open polyline to z >= 0 and returns its interior points
-        // (the first and last input points are handled by the caller).
-        const out = [];
-        const push = (q) => {
-          const last = out[out.length - 1];
-          if (last && Math.abs(last[0] - q[0]) < 1e-9 && Math.abs(last[1] - q[1]) < 1e-9) return;
-          out.push(q);
-        };
-        for (let i = 0; i < pts.length - 1; i++) {
-          const a = pts[i], b = pts[i + 1];
-          const ain = a[1] >= 0, bin = b[1] >= 0;
-          if (i > 0 && ain) push(a);
-          if (ain !== bin) {
-            const s = a[1] / (a[1] - b[1]);
-            push([a[0] + (b[0] - a[0]) * s, 0]);
-          }
-        }
-        return out;
-      }
+      // ----- Offset helpers -----------------------------------------------
 
       function segmentIntersection(a, b, c, d) {
         const rx = b[0] - a[0], rz = b[1] - a[1], sx = d[0] - c[0], sz = d[1] - c[1];
@@ -454,121 +480,265 @@
         return [a[0] + rx * t, a[1] + rz * t];
       }
 
-      // When the centerline bends tighter than the wall thickness, the inner
-      // offset folds back on itself around the extremum at index iExt. This
-      // finds where the two branches cross and merges the folded part into
-      // that single crease point. Returns false if no crossing exists.
-      function mergeFold(pts, iFrom, iTo) {
-        for (let pass = 0; pass < 4; pass++) {
-          let folded = false;
-          for (let i = iFrom; i < iTo; i++) if (pts[i + 1][0] < pts[i][0] - 1e-9) { folded = true; break; }
-          if (!folded) return true;
-          // Earliest segment that is crossed by a later, non-adjacent segment;
-          // for that one take the latest crossing so the whole loop collapses.
-          let hit = null;
-          for (let a = iFrom; a < iTo && !hit; a++) {
+      // Where the centerline bends tighter than half the wall thickness, the
+      // inner offset folds back on itself (x runs backwards). The real surface
+      // is the envelope of the forward-running pieces: the upper envelope for
+      // the top side (side = 1), the lower one for the underside (side = -1).
+      // Each fold is merged into the crease point where the envelope switches
+      // from one forward piece to a later one. Indices are preserved (folded
+      // points collapse onto the crease) so top and underside stay paired.
+      // Returns false if a fold cannot be resolved.
+      function mergeFold(pts, iFrom, iTo, side) {
+        const EPS = 1e-9;
+        const forward = (i) => pts[i + 1][0] > pts[i][0] + EPS;
+        const onEnvelope = (X, a, b) => {
+          for (let k = iFrom; k < iTo; k++) {
+            if (k === a || k === b - 1 || !forward(k)) continue;
+            const p0 = pts[k], p1 = pts[k + 1];
+            if (X[0] < p0[0] - 1e-7 || X[0] > p1[0] + 1e-7) continue;
+            const z = p0[1] + (p1[1] - p0[1]) * (X[0] - p0[0]) / (p1[0] - p0[0]);
+            if (side * (z - X[1]) > 1e-7) return false;
+          }
+          return true;
+        };
+        const search = (strict) => {
+          for (let a = iFrom; a < iTo; a++) {
+            if (strict && !forward(a)) continue;
             for (let b = iTo; b > a + 1; b--) {
+              if (strict && !forward(b - 1)) continue;
               const X = segmentIntersection(pts[a], pts[a + 1], pts[b - 1], pts[b]);
-              if (X) { hit = { a, b, X }; break; }
+              if (X && (!strict || onEnvelope(X, a, b))) return { a, b, X };
             }
           }
+          return null;
+        };
+        for (let pass = 0; pass < 16; pass++) {
+          let folded = false;
+          for (let i = iFrom; i < iTo; i++) if (pts[i + 1][0] < pts[i][0] - EPS) { folded = true; break; }
+          if (!folded) return true;
+          // Prefer a crossing of two forward pieces that lies on the envelope.
+          // A fold smaller than the sampling has no such crossing; then any
+          // crossing of the fold with a later piece is taken instead.
+          const hit = search(true) || search(false);
           if (!hit) {
-            // No crossing: the fold is smaller than the sampling. If it is a
-            // tiny excursion, collapse the backward points; otherwise give up.
-            let frontier = -Infinity, excursion = 0;
-            for (let i = iFrom; i <= iTo; i++) {
-              excursion = Math.max(excursion, frontier - pts[i][0]);
-              frontier = Math.max(frontier, pts[i][0]);
+            // No crossing at all: the fold is smaller than the sampling.
+            // Extend the forward piece before the fold and the one after it
+            // to their meeting point and put the crease there.
+            let k = iFrom;
+            while (k < iTo && !(pts[k + 1][0] < pts[k][0] - EPS)) k++;
+            let ka = k - 1, kb = k + 1;
+            while (ka >= iFrom && !forward(ka)) ka--;
+            while (kb < iTo && !forward(kb)) kb++;
+            let X = null;
+            if (ka >= iFrom && kb < iTo) {
+              const a0 = pts[ka], a1 = pts[ka + 1], b0 = pts[kb], b1 = pts[kb + 1];
+              const rx = a1[0] - a0[0], rz = a1[1] - a0[1], sx = b1[0] - b0[0], sz = b1[1] - b0[1];
+              const den = rx * sz - rz * sx;
+              if (Math.abs(den) > 1e-12) {
+                const t = ((b0[0] - a0[0]) * sz - (b0[1] - a0[1]) * sx) / den;
+                const C = [a0[0] + rx * t, a0[1] + rz * t];
+                if (Math.hypot(C[0] - pts[k][0], C[1] - pts[k][1]) < 0.5 && C[0] >= a0[0] && C[0] <= b1[0]) X = C;
+              }
             }
-            if (excursion > 0.5) return false;
-            frontier = pts[iFrom][0];
-            for (let i = iFrom + 1; i <= iTo; i++) {
-              if (pts[i][0] < frontier - 1e-9) pts[i] = pts[i - 1];
-              else frontier = pts[i][0];
-            }
-            return true;
+            if (!X) return false;
+            for (let i = ka + 1; i <= kb; i++) pts[i] = X;
+            continue;
           }
-          for (let i = hit.a + 1; i <= hit.b - 1; i++) pts[i] = hit.X;
+          const X = hit.X;
+          for (let i = hit.a + 1; i <= hit.b - 1; i++) pts[i] = X;
+          // Snap neighbours that still overshoot the crease (sampling residue).
+          for (let i = hit.a; i > iFrom && pts[i][0] > X[0] + EPS; i--) pts[i] = X;
+          for (let i = hit.b; i < iTo && pts[i][0] < X[0] - EPS; i++) pts[i] = X;
         }
         return false;
       }
 
-      // Human-readable position of extremum e (see layout() for the order).
-      function describeExtremum(p, e, crest) {
-        const top = p.ends === 'top';
-        if (crest) {
-          const left = top ? e / 2 : (e + 1) / 2;
-          return `crest between slots ${left} and ${left + 1}`;
-        }
-        return `trough of slot ${top ? (e + 1) / 2 : e / 2 + 1}`;
+      // How far the inner crease of a floor corner cuts into the flat floor.
+      // Zero when the corner is rounder than half the wall thickness. Floors
+      // are widened by this amount so the stated floor width is the real flat.
+      function cornerIntrusion(p, flank) {
+        const r = p.wall / 2;
+        const flat = 4 * p.wall + 10;
+        const T = [[0, 2 * r], [flat / 2, 2 * r]];
+        for (const q of flank.pts) T.push([flat + q.s - q.tz * r, r + q.z + q.tx * r]);
+        if (!mergeFold(T, 0, T.length - 1, 1)) return 0;
+        let end = 0;
+        for (const q of T) if (Math.abs(q[1] - 2 * r) < 1e-7) end = Math.max(end, q[0]);
+        return Math.max(0, flat - end);
       }
 
-      function buildProfile(p) {
-        const r = p.wall / 2;
-        const lay = layout(p);
-        const { halves, span } = lay;             // centerline extent (caps add r on each side)
-        const zLow = r - p.foot;                  // trough centerline (bottom touches z = -foot, clamped to 0)
-        const zHigh = p.height - r;               // crest centerline (top touches z = height)
-        const m = Math.max(6, Math.round(p.segments / 3)); // cap segments
-        const avgHalf = span / halves.length;
+      // ----- Layout ---------------------------------------------------------
 
-        const C = [], T = [], B = [], normals = [];
-        const addPoint = (x, zc, dz) => {
-          const len = Math.hypot(1, dz);
-          const nx = -dz / len, nz = 1 / len;
-          C.push([x, zc]);
-          normals.push([nx, nz]);
-          T.push([x + nx * r, zc + nz * r]);
-          B.push([x - nx * r, Math.max(0, zc - nz * r)]);
-        };
-        let x0 = r;
-        let up = p.ends !== 'top';                // first half-wave rises from a trough, or falls from a crest
-        const extrema = [{ index: 0, crest: !up }];
-        halves.forEach((w, j) => {
-          const za = up ? zLow : zHigh, zb = up ? zHigh : zLow;
-          const n = Math.max(16, Math.round(p.segments / 2 * w / avgHalf));
-          const first = j === 0 ? 0 : 1;          // shared point between halves is added once
-          for (let i = first; i <= n; i++) {
-            // Cosine-spaced samples: dense around the crest/trough where the
-            // curvature is highest, coarser on the nearly straight flank.
-            const s = w * (1 - Math.cos(Math.PI * i / n)) / 2;
-            const u = Math.PI * s / w;
-            addPoint(x0 + s, za + (zb - za) * (1 - Math.cos(u)) / 2, (zb - za) * Math.PI / (2 * w) * Math.sin(u));
+      function resolve(p) {
+        const errors = [];
+        const warnings = [];
+        const num = (v) => typeof v === 'number' && Number.isFinite(v);
+        const custom = p.mode === 'custom';
+        if (![p.depth, p.height, p.wall, p.plateau, p.endFoot].every(num) || !(p.depth > 0) || !(p.height > 0) || !(p.wall > 0)) {
+          errors.push('All dimensions must be positive numbers.');
+          return { errors, warnings };
+        }
+        if (p.plateau < 0 || p.endFoot < 0) errors.push('Plateau and end feet cannot be negative.');
+        if (p.height < p.wall + 5) errors.push(`Height must be at least ${p.wall + 5} mm (wall thickness + 5 mm).`);
+        if (p.style === 'sine') {
+          if (!num(p.flank) || p.flank < 5) errors.push('Flank width must be at least 5 mm.');
+        } else {
+          if (!num(p.angle) || p.angle < 3 || p.angle > 60) errors.push('Wall angle must be between 3° and 60°.');
+          if (!num(p.radius) || p.radius < 1) errors.push('Corner radius must be at least 1 mm.');
+        }
+        if (custom) {
+          const slots = p.slots || [];
+          if (slots.length < 1) errors.push('Add at least one slot.');
+          if (slots.some(w => !num(w) || w < 0)) errors.push('Slot floor widths must be zero or more.');
+        } else {
+          if (!num(p.length) || !(p.length > 0)) errors.push('Length must be a positive number.');
+          if (!num(p.count) || p.count < 1 || Math.round(p.count) !== p.count) errors.push('The number of slots must be a whole number of at least 1.');
+        }
+        if (errors.length) return { errors, warnings };
+
+        // Flats shorter than 0.05 mm are treated as absent.
+        const tiny = (v) => (v < 0.05 ? 0 : v);
+        p = { ...p, plateau: tiny(p.plateau), endFoot: tiny(p.endFoot) };
+
+        const flank = buildFlank(p);
+        // Intrusions below a micron are sampling noise: not compensated, but
+        // the end caps still get their safety margin.
+        const rawDelta = cornerIntrusion(p, flank);
+        const delta = rawDelta > 1e-3 ? rawDelta : 0;
+        const endFlat = p.endFoot + delta + (rawDelta > 1e-9 ? END_MARGIN : 0);
+        const wallRun = 2 * flank.run + p.plateau;        // centerline width of one wall
+        const n = custom ? p.slots.length : p.count;
+        const fixed = p.wall + 2 * endFlat + (n + 1) * wallRun + n * 2 * delta;
+        let floors;
+        if (custom) {
+          floors = p.slots.map(v => tiny(Number(v)));
+        } else {
+          const f = (p.length - fixed) / n;
+          if (f < -0.05) {
+            const fits = Math.floor((p.length - p.wall - 2 * endFlat - wallRun) / (wallRun + 2 * delta));
+            errors.push(`${n} slot${n > 1 ? 's' : ''} need at least ${Math.ceil(fixed)} mm of length with these walls. ` +
+              (fits >= 1 ? `Use ${fits} slot${fits > 1 ? 's' : ''} or fewer, ` : 'Make the rack longer, ') +
+              'or make the walls steeper, the plateau or the end feet smaller.');
+            return { errors, warnings, fits: Math.max(0, fits) };
           }
-          x0 += w;
-          extrema.push({ index: C.length - 1, crest: up });
-          up = !up;
-        });
+          floors = new Array(n).fill(tiny(Math.max(0, f)));
+        }
+        const length = fixed + floors.reduce((a, b) => a + b, 0);
+
+        if (p.style === 'sine' && flank.slopeDeg > 78) warnings.push(`Very steep flanks (${flank.slopeDeg.toFixed(0)}°). Consider a wider flank or a lower height.`);
+        if (p.depth > 250) warnings.push(`Print height ${p.depth} mm: check that your printer's Z travel allows this.`);
+        if (length > 600) warnings.push(`The rack is ${length.toFixed(0)} mm long: check that it fits your print bed.`);
+
+        return { errors, warnings, flank, delta, endFlat, wallRun, floors, length, plateau: p.plateau, walls: n + 1, slopeDeg: flank.slopeDeg };
+      }
+
+      function validate(p) {
+        const res = resolve(p);
+        return { errors: res.errors, warnings: res.warnings, length: res.length, floors: res.floors, walls: res.walls, slopeDeg: res.slopeDeg, fits: res.fits };
+      }
+
+      // ----- Profile ----------------------------------------------------------
+
+      function buildProfile(p, res = resolve(p)) {
+        if (res.errors.length) throw new Error(res.errors.join(' '));
+        const r = p.wall / 2;
+        const { flank, delta, endFlat, floors } = res;
+        const zLow = r;                           // floor centerline: underside sits on z = 0
+        const m = Math.max(6, 2 * Math.round(p.segments / 6)); // cap segments, even so the tip is a vertex
+
+        // Centerline points with unit tangents, plus marker indices in the
+        // middle of every floor and on top of every wall.
+        const C = [], tangents = [], onFlat = new Set();
+        const add = (x, z, tx, tz) => { C.push([x, z]); tangents.push([tx, tz]); };
+        let x = r;
+        add(x, zLow, 1, 0);
+        onFlat.add(0);
+        const flat = (len, z) => {                // returns the index of its midpoint
+          onFlat.add(C.length - 1);
+          if (len <= 1e-9) return C.length - 1;
+          add(x + len / 2, z, 1, 0);
+          const mid = C.length - 1;
+          add(x + len, z, 1, 0);
+          onFlat.add(mid).add(mid + 1);
+          x += len;
+          return mid;
+        };
+        const flankUp = () => {
+          for (let i = 1; i < flank.pts.length; i++) { const q = flank.pts[i]; add(x + q.s, zLow + q.z, q.tx, q.tz); }
+          x += flank.run;
+        };
+        const flankDown = () => {
+          for (let i = flank.pts.length - 2; i >= 0; i--) { const q = flank.pts[i]; add(x + flank.run - q.s, zLow + q.z, q.tx, -q.tz); }
+          x += flank.run;
+        };
+
+        const crestIdx = [], floorIdx = [], floorSpans = [], crestX = [];
+        flat(endFlat, zLow);
+        for (let k = 0; k <= floors.length; k++) {
+          flankUp();
+          const x0 = x;
+          crestIdx.push(flat(res.plateau, zLow + (p.height - p.wall)));
+          crestX.push((x0 + x) / 2);
+          flankDown();
+          if (k < floors.length) {
+            const c = floors[k] + 2 * delta;
+            floorSpans.push([x + delta, x + c - delta]);
+            floorIdx.push(flat(c, zLow));
+          }
+        }
+        flat(endFlat, zLow);
         const N = C.length - 1;
 
-        // Interior crests fold on the bottom side, interior troughs on the top
-        // side, when the wave is tighter than the wall. Merge those folds.
+        const T = [], B = [];
+        for (let i = 0; i <= N; i++) {
+          const nx = -tangents[i][1], nz = tangents[i][0];
+          T.push([C[i][0] + nx * r, C[i][1] + nz * r]);
+          B.push([C[i][0] - nx * r, Math.max(0, C[i][1] - nz * r)]);
+        }
+
+        // Floor corners fold on the top side, wall corners on the underside,
+        // when they are tighter than half the wall thickness. Merge those folds.
         const issues = [];
-        for (let e = 1; e < extrema.length - 1; e++) {
-          const side = extrema[e].crest ? B : T;
-          const ok = mergeFold(side, extrema[e - 1].index, extrema[e + 1].index);
-          if (!ok) issues.push(`The ${describeExtremum(p, e, extrema[e].crest)} is far too tight for this height and wall thickness.`);
+        const tBounds = [0, ...crestIdx, N], bBounds = [0, ...floorIdx, N];
+        for (let i = 0; i < tBounds.length - 1; i++) {
+          if (!mergeFold(T, tBounds[i], tBounds[i + 1], 1)) {
+            issues.push(i === 0 || i === tBounds.length - 2
+              ? 'The end feet are too short for these wall corners.'
+              : `Slot ${i} is too tight for this wall shape and thickness.`);
+          }
+        }
+        for (let i = 0; i < bBounds.length - 1; i++) {
+          if (!mergeFold(B, bBounds[i], bBounds[i + 1], -1)) issues.push(`Wall ${i + 1} is too narrow for this wall thickness.`);
         }
 
-        // End cap (right): from B_N around +tangent to T_N
-        const thetaN = Math.atan2(normals[N][1], normals[N][0]);
-        const endArc = [[C[N][0] - normals[N][0] * r, C[N][1] - normals[N][1] * r]];
-        for (let j = 1; j < m; j++) {
-          const th = thetaN - Math.PI + Math.PI * j / m;
-          endArc.push([C[N][0] + r * Math.cos(th), C[N][1] + r * Math.sin(th)]);
+        // Weld points that ended up closer than 0.1 µm so the mesh has no
+        // edges below single-precision resolution.
+        // Points on a flat take precedence so floors stay exactly level.
+        const close = (a, b) => Math.abs(a[0] - b[0]) < 1e-4 && Math.abs(a[1] - b[1]) < 1e-4;
+        for (const side of [T, B]) {
+          for (let i = 0; i <= N; i++) {
+            let j = i;
+            while (j < N && close(side[j + 1], side[j])) j++;
+            if (j > i) {
+              let rep = side[i];
+              for (let k = i; k <= j; k++) if (onFlat.has(k)) { rep = side[k]; break; }
+              for (let k = i; k <= j; k++) side[k] = rep;
+            }
+            i = j;
+          }
         }
-        endArc.push(T[N]);
-        const endInterior = clipPolylineAboveZero(endArc);
 
-        // Start cap (left): from T_0 around -tangent to B_0
-        const theta0 = Math.atan2(normals[0][1], normals[0][0]);
-        const startArc = [T[0]];
+        // Rounded end caps (both ends are flat, so the caps are half circles
+        // standing on the ground).
+        const endInterior = [], startInterior = [];
         for (let j = 1; j < m; j++) {
-          const th = theta0 + Math.PI * j / m;
-          startArc.push([C[0][0] + r * Math.cos(th), C[0][1] + r * Math.sin(th)]);
+          const th = -Math.PI / 2 + Math.PI * j / m;
+          endInterior.push([C[N][0] + r * Math.cos(th), C[N][1] + r * Math.sin(th)]);
         }
-        startArc.push([C[0][0] - normals[0][0] * r, C[0][1] - normals[0][1] * r]);
-        const startInterior = clipPolylineAboveZero(startArc);
+        for (let j = 1; j < m; j++) {
+          const th = Math.PI / 2 + Math.PI * j / m;
+          startInterior.push([C[0][0] + r * Math.cos(th), C[0][1] + r * Math.sin(th)]);
+        }
 
         // Counter-clockwise outline (X right, Z up)
         const loop = [];
@@ -609,20 +779,15 @@
         }
         area /= 2;
 
-        const A = (zHigh - zLow) / 2;
-        return { loop, tris, area, issues, lambda: lay.minHalf * 2, slots: slotWidths(p, lay), crests: lay.crests, length: lay.length,
-          amplitude: A, slopeDeg: Math.atan(A * Math.PI / lay.minHalf) * 180 / Math.PI };
+        return {
+          loop, tris, area, issues, top: T, bottom: B,
+          length: res.length, floors: floors.slice(), floorSpans, crestX,
+          walls: res.walls, slopeDeg: res.slopeDeg, flankRun: flank.run
+        };
       }
 
-      // Slot widths left to right (crest to crest; open end slots end to crest).
-      function slotWidths(p, lay = layout(p)) {
-        if (p.mode === 'custom') return (p.slots || []).map(Number);
-        const w = lay.halves[0] * 2;
-        return p.ends === 'top' ? new Array(p.waves).fill(w) : [w / 2, ...new Array(Math.max(0, p.waves - 1)).fill(w), w / 2];
-      }
-
-      function buildMesh(p) {
-        const profile = buildProfile(p);
+      function buildMesh(p, res = resolve(p)) {
+        const profile = buildProfile(p, res);
         const { loop, tris } = profile;
         const D = p.depth;
         const n = loop.length;
@@ -676,10 +841,7 @@
           triangles: triCount,
           volume: profile.area * D,
           issues: profile.issues,
-          lambda: profile.lambda,
-          slots: profile.slots,
-          crests: profile.crests,
-          slopeDeg: profile.slopeDeg,
+          profile,
           bounds: { x: profile.length, y: D, z: p.height }
         };
       }
@@ -731,7 +893,7 @@
         return buffer;
       }
 
-      return { DEFAULTS, layout, effectiveLength, slotWidths, validate, buildProfile, buildMesh, toPrintOrientation, toBinarySTL };
+      return { DEFAULTS, resolve, validate, buildFlank, cornerIntrusion, buildProfile, buildMesh, toPrintOrientation, toBinarySTL };
     })();
     if (typeof module !== 'undefined' && module.exports) module.exports = WaveGeometry;
   </script>
@@ -741,28 +903,36 @@
       const $ = (id) => document.getElementById(id);
       const G = WaveGeometry;
 
-      const numericKeys = ['length', 'depth', 'height', 'waves', 'wall', 'foot'];
-      const inputs = {
-        length: $('length'), depth: $('depth'), height: $('height'), waves: $('waves'),
-        wall: $('wall'), foot: $('foot'), ends: $('ends'), segments: $('segments')
-      };
-      const ranges = {
-        length: $('lengthRange'), depth: $('depthRange'), height: $('heightRange'), waves: $('wavesRange'),
-        wall: $('wallRange'), foot: $('footRange')
+      const numericKeys = ['length', 'count', 'depth', 'height', 'angle', 'radius', 'flank', 'plateau', 'wall', 'endFoot'];
+      const inputs = {}, ranges = {};
+      for (const key of numericKeys) {
+        inputs[key] = document.getElementById(key);
+        ranges[key] = document.getElementById(`${key}Range`);
+      }
+      const segmentsSelect = $('segments');
+
+      // Wall shape presets. They only touch the shape, never the slot layout.
+      const PRESETS = {
+        arches: { style: 'fillet', angle: 10, radius: 6, plateau: 0, endFoot: 10 },
+        slim: { style: 'fillet', angle: 6, radius: 3, plateau: 0, endFoot: 12 },
+        trapezoid: { style: 'fillet', angle: 22, radius: 4, plateau: 6, endFoot: 10 },
+        soft: { style: 'sine', flank: 26, plateau: 0, endFoot: 8 },
+        classic: { style: 'sine', flank: 30, plateau: 0, endFoot: 0 }
       };
 
       let viewMode = 'standing';
       let currentMesh = null;
-      let mode = 'uniform';
+      let mode = 'even';
+      let style = 'fillet';
       let slots = [];
 
       // ----- Parameters <-> UI <-> URL ---------------------------------
       function readParams() {
         const p = {};
         for (const key of numericKeys) p[key] = parseFloat(inputs[key].value);
-        p.ends = inputs.ends.value === 'top' ? 'top' : 'floor';
-        p.segments = parseInt(inputs.segments.value, 10) || 48;
+        p.segments = parseInt(segmentsSelect.value, 10) || 48;
         p.mode = mode;
+        p.style = style;
         p.slots = slots.map(Number);
         return p;
       }
@@ -772,94 +942,120 @@
           inputs[key].value = p[key];
           ranges[key].value = p[key];
         }
-        inputs.ends.value = p.ends;
-        inputs.segments.value = String(p.segments);
-        mode = p.mode === 'custom' ? 'custom' : 'uniform';
+        segmentsSelect.value = String(p.segments);
+        mode = p.mode === 'custom' ? 'custom' : 'even';
+        style = p.style === 'sine' ? 'sine' : 'fillet';
         slots = (p.slots || []).map(Number);
         renderSlots();
         applyMode();
       }
 
+      const HASH_KEYS = { l: 'length', n: 'count', d: 'depth', h: 'height', t: 'wall', fl: 'flank', a: 'angle', r: 'radius', p: 'plateau', e: 'endFoot' };
+
+      function paramsFromHash() {
+        const p = { ...G.DEFAULTS, slots: [] };
+        const hash = location.hash.replace(/^#/, '');
+        if (!hash) return p;
+        const q = new URLSearchParams(hash);
+        for (const [short, key] of Object.entries(HASH_KEYS)) {
+          if (!q.has(short)) continue;
+          const v = parseFloat(q.get(short));
+          if (Number.isFinite(v) && v >= 0) p[key] = v;
+        }
+        if (q.get('st') === 's') p.style = 'sine';
+        if (q.get('st') === 'f') p.style = 'fillet';
+        const s = parseInt(q.get('s'), 10);
+        if ([24, 48, 96, 160].includes(s)) p.segments = s;
+        const w = (q.get('w') || '').split(',').filter(v => v !== '').map(Number).filter(v => Number.isFinite(v) && v >= 0);
+        if (w.length) p.slots = w;
+        if (q.get('m') === 'c' && w.length) p.mode = 'custom';
+        return p;
+      }
+
+      function hashFromParams(p) {
+        const custom = p.mode === 'custom';
+        const q = [custom ? `m=c&w=${p.slots.join(',')}` : `m=e&l=${p.length}&n=${p.count}`];
+        q.push(`d=${p.depth}`, `h=${p.height}`, `t=${p.wall}`);
+        q.push(p.style === 'sine' ? `st=s&fl=${p.flank}` : `st=f&a=${p.angle}&r=${p.radius}`);
+        q.push(`p=${p.plateau}`, `e=${p.endFoot}`, `s=${p.segments}`);
+        return `#${q.join('&')}`;
+      }
+
       // ----- Slot editor -------------------------------------------------
       const slotList = $('slotList');
 
-      function slotLabel(i) {
-        const open = inputs.ends.value !== 'top' && (i === 0 || i === slots.length - 1) && slots.length > 1;
-        return `<span class="slot-name">Slot ${i + 1}${open ? '<small>open end</small>' : ''}</span>`;
-      }
-
       function renderSlots() {
         slotList.innerHTML = '';
-        const minSlots = inputs.ends.value === 'top' ? 1 : 2;
         slots.forEach((w, i) => {
           const row = document.createElement('div');
           row.className = 'slot-row';
-          row.innerHTML = `${slotLabel(i)}<input type="number" min="5" max="500" step="1" value="${w}" aria-label="Slot ${i + 1} width in mm"><button type="button" aria-label="Remove slot ${i + 1}" title="Remove slot">&times;</button>`;
+          row.innerHTML = `<span class="slot-name">Slot ${i + 1}</span><input type="number" min="0" max="500" step="1" value="${w}" aria-label="Slot ${i + 1} floor width in mm"><button type="button" aria-label="Remove slot ${i + 1}" title="Remove slot">&times;</button>`;
           const input = row.querySelector('input');
           input.addEventListener('input', () => {
             const v = parseFloat(input.value);
             if (!Number.isFinite(v)) return;
             slots[i] = v;
-            update(true);
+            update();
           });
           const remove = row.querySelector('button');
-          remove.disabled = slots.length <= minSlots;
-          remove.addEventListener('click', () => { slots.splice(i, 1); renderSlots(); update(true); });
+          remove.disabled = slots.length <= 1;
+          remove.addEventListener('click', () => { slots.splice(i, 1); renderSlots(); update(); });
           slotList.appendChild(row);
         });
       }
 
-      function seedSlotsFromUniform() {
-        const p = readParams();
-        const lay = G.layout({ ...p, mode: 'uniform' });
-        slots = G.slotWidths({ ...p, mode: 'uniform' }, lay).map(w => Math.round(w));
-      }
-
-      function addSlot(factor) {
-        const inner = slots.filter((_, i) => inputs.ends.value === 'top' || (i > 0 && i < slots.length - 1));
-        const base = inner.length ? inner[inner.length - 1] : (slots.length ? slots[slots.length - 1] * 2 : 70);
-        const w = Math.round(base * factor);
-        // Keep the open end slots at the ends: insert before the last one.
-        if (inputs.ends.value !== 'top' && slots.length >= 2) slots.splice(slots.length - 1, 0, w);
-        else slots.push(w);
-        renderSlots();
-        update(true);
+      function seedSlotsFromEven() {
+        const res = G.resolve({ ...readParams(), mode: 'even' });
+        slots = res.errors.length ? [20, 20, 20, 20] : res.floors.map(f => Math.round(f));
       }
 
       function applyMode() {
         const custom = mode === 'custom';
-        $('modeUniform').classList.toggle('active', !custom);
+        $('modeEven').classList.toggle('active', !custom);
         $('modeCustom').classList.toggle('active', custom);
-        $('wavesField').hidden = custom;
-        $('slotsField').hidden = !custom;
-        $('lengthField').classList.toggle('derived', custom);
-        $('lengthHelp').hidden = !custom;
-        $('lengthUnit').textContent = custom ? 'mm · derived' : 'mm · along the wave';
-        inputs.length.disabled = custom;
-        ranges.length.disabled = custom;
+        $('evenFields').hidden = custom;
+        $('customFields').hidden = !custom;
+        const sine = style === 'sine';
+        $('styleFillet').classList.toggle('active', !sine);
+        $('styleSine').classList.toggle('active', sine);
+        $('filletFields').hidden = sine;
+        $('sineFields').hidden = !sine;
       }
 
-      function paramsFromHash() {
-        const p = { ...G.DEFAULTS };
-        const hash = location.hash.replace(/^#/, '');
-        if (!hash) return p;
-        const q = new URLSearchParams(hash);
-        const map = { l: 'length', d: 'depth', h: 'height', n: 'waves', t: 'wall', f: 'foot' };
-        for (const [short, key] of Object.entries(map)) {
-          const v = parseFloat(q.get(short));
-          if (Number.isFinite(v) && v > 0) p[key] = v;
+      function applyPreset(name) {
+        const preset = { ...PRESETS[name] };
+        if (name === 'classic' && mode === 'even') {
+          // Fit the flanks so the valleys come to a point, like a pure wave.
+          const p = readParams();
+          const flank = (p.length - p.wall) / (p.count + 1) / 2;
+          if (Number.isFinite(flank) && flank >= 5) preset.flank = Math.round(flank * 100) / 100;
         }
-        if (q.get('e') === 'top') p.ends = 'top';
-        const s = parseInt(q.get('s'), 10);
-        if ([24, 48, 96, 160].includes(s)) p.segments = s;
-        const w = (q.get('w') || '').split(',').map(Number).filter(v => Number.isFinite(v) && v > 0);
-        if (w.length) { p.mode = 'custom'; p.slots = w; }
-        return p;
+        style = preset.style;
+        for (const key of ['angle', 'radius', 'flank', 'plateau', 'endFoot']) {
+          if (preset[key] === undefined) continue;
+          inputs[key].value = preset[key];
+          ranges[key].value = preset[key];
+        }
+        applyMode();
+        if (mode === 'even') {
+          // Wider walls may not leave room for every slot: keep what fits.
+          const res = G.resolve(readParams());
+          if (res.errors.length && res.fits >= 1) {
+            inputs.count.value = res.fits;
+            ranges.count.value = res.fits;
+          }
+        }
+        update();
       }
 
-      function hashFromParams(p) {
-        const base = `#l=${p.length}&d=${p.depth}&h=${p.height}&n=${p.waves}&t=${p.wall}&f=${p.foot}&e=${p.ends}&s=${p.segments}`;
-        return p.mode === 'custom' ? `${base}&w=${p.slots.join(',')}` : base;
+      function activePreset(p) {
+        for (const [name, preset] of Object.entries(PRESETS)) {
+          if (preset.style !== p.style || preset.plateau !== p.plateau || preset.endFoot !== p.endFoot) continue;
+          if (p.style === 'fillet' && (preset.angle !== p.angle || preset.radius !== p.radius)) continue;
+          if (name === 'soft' && preset.flank !== p.flank) continue;
+          return name;
+        }
+        return null;
       }
 
       // ----- Minimal WebGL renderer --------------------------------------
@@ -1091,56 +1287,81 @@
         return out;
       }
 
+      // ----- Side profile (SVG) -------------------------------------------
+      function fmt(n, digits = 1) { return Number(n).toFixed(digits).replace(/\.0+$/, ''); }
+
+      function drawProfile(p, profile) {
+        const svg = $('profile');
+        const L = profile.length, H = p.height;
+        const boardTop = Math.max(H * 1.7, H + 40);
+        const pad = Math.max(4, L * 0.015);
+        const fs = Math.max(6, L / 46);
+        const y = (z) => H - z;
+        const parts = [];
+        profile.floorSpans.forEach(([a, b], i) => {
+          const w = b - a;
+          if (w < 0.5) return;
+          parts.push(`<rect class="board" x="${a.toFixed(2)}" y="${y(boardTop).toFixed(2)}" width="${w.toFixed(2)}" height="${(boardTop - p.wall).toFixed(2)}" rx="${Math.min(1.5, w / 4).toFixed(2)}"></rect>`);
+          parts.push(`<text x="${((a + b) / 2).toFixed(2)}" y="${(H + fs * 1.25).toFixed(2)}" font-size="${fs.toFixed(2)}" text-anchor="middle">${fmt(profile.floors[i])}</text>`);
+        });
+        const outline = profile.loop.map(q => `${q[0].toFixed(2)},${y(q[1]).toFixed(2)}`).join(' ');
+        parts.push(`<polygon class="rack" points="${outline}"></polygon>`);
+        parts.push(`<line class="ground" x1="${-pad}" x2="${L + pad}" y1="${H}" y2="${H}"></line>`);
+        svg.setAttribute('viewBox', `${-pad} ${y(boardTop) - pad} ${L + 2 * pad} ${boardTop + pad + fs * 1.9}`);
+        svg.innerHTML = parts.join('');
+      }
+
       // ----- Update pipeline --------------------------------------------
       const message = $('message');
       const downloadBtn = $('downloadBtn');
+      const statIds = ['statFloors', 'statLength', 'statSlope', 'statFootprint', 'statPrintHeight', 'statVolume'];
 
-      function fmt(n, digits = 1) { return Number(n).toFixed(digits).replace(/\.0+$/, ''); }
-
-      function update(refit = false) {
+      function update() {
         const p = readParams();
-        const check = G.validate(p);
-        if (p.mode === 'custom' && !check.errors.length) {
-          p.length = Math.round(check.length * 100) / 100;
-          inputs.length.value = p.length;
-          ranges.length.value = p.length;
-        }
+        const res = G.resolve(p);
         history.replaceState(null, '', hashFromParams(p));
-
-        const footMax = Math.max(0, p.wall / 2 - 0.25);
-        ranges.foot.max = Math.min(4, footMax);
+        const active = activePreset(p);
+        for (const btn of document.querySelectorAll('.presets button')) btn.classList.toggle('active', btn.dataset.preset === active);
 
         const fail = (text) => {
           message.className = 'msg error';
           message.textContent = text;
           downloadBtn.disabled = true;
           currentMesh = null;
-          for (const id of ['statPitch', 'statSlope', 'statFootprint', 'statPrintHeight', 'statVolume', 'statTriangles']) $(id).textContent = '–';
+          for (const id of statIds) document.getElementById(id).textContent = '–';
+          $('evenHelp').textContent = '';
+          $('customHelp').textContent = '';
         };
-        if (check.errors.length) return fail(check.errors.join(' '));
-        message.className = check.warnings.length ? 'msg warn' : 'msg';
-        message.textContent = check.warnings.join(' ');
+        if (res.errors.length) return fail(res.errors.join(' '));
+        const mesh = G.buildMesh(p, res);
+        if (mesh.issues.length) return fail(mesh.issues.join(' '));
+
+        currentMesh = mesh;
+        message.className = res.warnings.length ? 'msg warn' : 'msg';
+        message.textContent = res.warnings.join(' ');
         downloadBtn.disabled = false;
 
-        currentMesh = G.buildMesh(p);
-        if (currentMesh.issues.length) return fail(currentMesh.issues.join(' '));
-        const shown = viewMode === 'print' ? G.toPrintOrientation(currentMesh) : currentMesh;
+        const shown = viewMode === 'print' ? G.toPrintOrientation(mesh) : mesh;
         if (renderer) {
           renderer.setMesh(shown);
-          if (refit) renderer.fit();
+          renderer.fit();
           renderer.requestRender();
         }
+        drawProfile(p, mesh.profile);
 
-        const uniq = [...new Set(currentMesh.slots.map(w => fmt(w)))];
-        $('statPitch').textContent = p.mode === 'custom' && uniq.length > 1
-          ? `${currentMesh.slots.map(w => fmt(w, 0)).join(' · ')} mm`
-          : `${fmt(currentMesh.lambda)} mm`;
-        $('statSlope').textContent = `${fmt(currentMesh.slopeDeg, 0)}°`;
-        $('statFootprint').textContent = `${fmt(currentMesh.bounds.x)} × ${fmt(p.height)} mm`;
+        const floors = mesh.profile.floors;
+        const allEqual = floors.every(f => Math.abs(f - floors[0]) < 0.05);
+        $('statFloors').textContent = allEqual ? `${floors.length} × ${fmt(floors[0])} mm` : `${floors.map(f => fmt(f)).join(' · ')} mm`;
+        $('statLength').textContent = `${fmt(res.length)} mm`;
+        $('statSlope').textContent = `${fmt(res.slopeDeg, 0)}°`;
+        $('statFootprint').textContent = `${fmt(res.length)} × ${fmt(p.height)} mm`;
         $('statPrintHeight').textContent = `${fmt(p.depth)} mm`;
-        const cm3 = currentMesh.volume / 1000;
+        const cm3 = mesh.volume / 1000;
         $('statVolume').textContent = `${fmt(cm3)} cm³ · ~${fmt(cm3 * 1.24 * 0.55, 0)} g PLA`;
-        $('statTriangles').textContent = currentMesh.triangles.toLocaleString();
+        $('evenHelp').textContent = floors[0] > 0
+          ? `Each slot gets a flat floor ${fmt(floors[0])} mm wide.`
+          : 'The valleys come to a point. Make the rack longer or use fewer slots for flat floors.';
+        $('customHelp').textContent = `Total length: ${fmt(res.length)} mm.`;
       }
 
       function downloadSTL() {
@@ -1151,11 +1372,11 @@
         const blob = new Blob([buffer], { type: 'model/stl' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
+        const floors = currentMesh.profile.floors.map(f => fmt(f, 0));
+        const same = floors.every(f => f === floors[0]);
         a.href = url;
-        const L = Math.round(currentMesh.bounds.x);
-        a.download = p.mode === 'custom'
-          ? `wave-rack_${L}x${p.depth}x${p.height}mm_slots-${p.slots.map(w => Math.round(w)).join('-')}.stl`
-          : `wave-rack_${L}x${p.depth}x${p.height}mm_${p.waves}waves.stl`;
+        a.download = `wave-rack_${Math.round(currentMesh.bounds.x)}x${p.depth}x${p.height}mm_` +
+          (same ? `${floors.length}x${floors[0]}mm-slots` : `slots-${floors.join('-')}`) + '.stl';
         document.body.appendChild(a);
         a.click();
         a.remove();
@@ -1164,43 +1385,48 @@
 
       // ----- Wiring -------------------------------------------------------
       for (const key of numericKeys) {
-        ranges[key].addEventListener('input', () => { inputs[key].value = ranges[key].value; update(key === 'length' || key === 'depth' || key === 'height'); });
+        ranges[key].addEventListener('input', () => { inputs[key].value = ranges[key].value; update(); });
         inputs[key].addEventListener('input', () => {
           if (inputs[key].value === '' || !Number.isFinite(parseFloat(inputs[key].value))) return;
           ranges[key].value = inputs[key].value;
-          update(true);
+          update();
         });
       }
-      inputs.ends.addEventListener('change', () => { renderSlots(); update(false); });
-      $('modeUniform').addEventListener('click', () => { mode = 'uniform'; applyMode(); update(true); });
+      segmentsSelect.addEventListener('change', update);
+      $('modeEven').addEventListener('click', () => { mode = 'even'; applyMode(); update(); });
       $('modeCustom').addEventListener('click', () => {
         mode = 'custom';
-        if (!slots.length) { seedSlotsFromUniform(); renderSlots(); }
+        if (!slots.length) { seedSlotsFromEven(); renderSlots(); }
         applyMode();
-        update(true);
+        update();
       });
-      $('addSlot').addEventListener('click', () => addSlot(1));
-      $('addWideSlot').addEventListener('click', () => addSlot(1.5));
-      inputs.segments.addEventListener('change', () => update(false));
+      $('styleFillet').addEventListener('click', () => { style = 'fillet'; applyMode(); update(); });
+      $('styleSine').addEventListener('click', () => { style = 'sine'; applyMode(); update(); });
+      $('addSlot').addEventListener('click', () => {
+        slots.push(slots.length ? slots[slots.length - 1] : 20);
+        renderSlots();
+        update();
+      });
+      for (const btn of document.querySelectorAll('.presets button')) btn.addEventListener('click', () => applyPreset(btn.dataset.preset));
       downloadBtn.addEventListener('click', downloadSTL);
-      $('resetBtn').addEventListener('click', () => { writeParams({ ...G.DEFAULTS, slots: [] }); update(true); });
+      $('resetBtn').addEventListener('click', () => { writeParams({ ...G.DEFAULTS, slots: [] }); update(); });
 
       const viewButtons = { standing: $('viewStanding'), print: $('viewPrint') };
-      for (const [mode, btn] of Object.entries(viewButtons)) {
+      for (const [name, btn] of Object.entries(viewButtons)) {
         btn.addEventListener('click', () => {
-          viewMode = mode;
-          for (const [m, b] of Object.entries(viewButtons)) b.classList.toggle('active', m === mode);
+          viewMode = name;
+          for (const [m, b] of Object.entries(viewButtons)) b.classList.toggle('active', m === name);
           if (renderer) {
-            renderer.state.yaw = mode === 'print' ? -0.75 : -0.55;
-            renderer.state.pitch = mode === 'print' ? 0.6 : 0.42;
+            renderer.state.yaw = name === 'print' ? -0.75 : -0.55;
+            renderer.state.pitch = name === 'print' ? 0.6 : 0.42;
           }
-          update(true);
+          update();
         });
       }
-      window.addEventListener('hashchange', () => { writeParams(paramsFromHash()); update(true); });
+      window.addEventListener('hashchange', () => { writeParams(paramsFromHash()); update(); });
 
       writeParams(paramsFromHash());
-      update(true);
+      update();
     })();
   </script>
 </body>

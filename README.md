@@ -47,13 +47,13 @@
 ### 4. Wave Rack Generator
 * **URL:** [https://tools.pentenrieder.dev/wave-rack/](https://tools.pentenrieder.dev/wave-rack/)
 * **Directory:** [`wave-rack/`](wave-rack/)
-* **Description:** Generates a parametric, wave-shaped rack for cutting boards, plates, lids or books as a print-ready binary STL. The part is exported lying on its side so every layer contains the whole curve &mdash; strong layer lines and no supports. Zero dependencies: geometry, WebGL preview and STL export are hand-written in a single HTML file.
+* **Description:** Generates a parametric rack for cutting boards, plates, lids or books as a print-ready binary STL. Every slot has a flat floor as wide as the board it holds, separated by walls that range from a classic wave to slim, straight dividers. The part is exported lying on its side so every layer contains the whole profile &mdash; strong layer lines and no supports. Zero dependencies: geometry, WebGL preview and STL export are hand-written in a single HTML file.
 * **Key Capabilities:**
-  * **Four main parameters:** length, depth (print height), height and number of waves, plus fine tuning for wall thickness, flat feet, end shape and resolution.
-  * **Custom slot widths:** switch to per-slot widths (e.g. wide slots for thick boards, narrow ones for thin boards); the length is derived. Crests and troughs between narrow slots get a clean inner crease instead of a self-intersecting offset.
-  * **Constant-thickness sine ribbon:** true normal offset with rounded end caps; too-tight combinations are detected and the maximum wall thickness is suggested.
-  * **Live 3D preview:** orbit, zoom and pinch; switch between "in use" and "on the print bed" orientation.
-  * **Watertight STL export:** every edge is shared by exactly two triangles, with slot pitch, slope, volume and weight estimate shown live.
+  * **Slots by floor width:** either fit a number of equal slots into a given length, or list a flat floor width per slot (board thickness plus play) and let the length follow. The stated width is the real flat floor, also when corners are tighter than the wall thickness.
+  * **Wall shapes:** straight walls with rounded corners (lean angle + corner radius, turning into soft arcs for large radii) or wave flanks, with an optional flat top and end feet. Presets: Arches, Slim dividers, Trapezoid, Soft wave, Classic wave.
+  * **Constant wall thickness:** the profile is a centerline offset to both sides; folds of the inner offset at tight corners are merged into clean creases along the surface envelope.
+  * **Live preview:** 3D view (orbit, zoom, pinch; "in use" and "on the print bed") plus a side profile that draws a board into every slot.
+  * **Watertight STL export:** every edge is shared by exactly two triangles, with floor widths, length, wall slope, volume and weight estimate shown live.
   * **Shareable presets:** all settings are mirrored into the URL hash.
 
 ---
