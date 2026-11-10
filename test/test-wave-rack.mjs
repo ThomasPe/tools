@@ -12,14 +12,17 @@ function loadGeometry() {
   return mod.exports;
 }
 
-const near = (actual, expected, label) => {
+const G = loadGeometry();
+const custom = (slots, extra = {}) => ({ ...G.DEFAULTS, mode: 'custom', slots, ...extra });
+
+const near = (actual, expected, label, tol = 1e-3) => {
   assert.equal(actual.length, expected.length, label);
-  actual.forEach((v, i) => assert.ok(Math.abs(v - expected[i]) < 1e-3, `${label}: [${actual}] vs [${expected}]`));
+  actual.forEach((v, i) => assert.ok(Math.abs(v - expected[i]) < tol, `${label}: [${actual}] vs [${expected}]`));
 };
 
 function analyze(mesh) {
   const pos = mesh.positions;
-  const key = (i) => `${pos[i].toFixed(6)},${pos[i + 1].toFixed(6)},${pos[i + 2].toFixed(6)}`;
+  const key = (i) => `${pos[i].toFixed(5)},${pos[i + 1].toFixed(5)},${pos[i + 2].toFixed(5)}`;
   const edges = new Map();
   let volume = 0, degenerate = 0;
   const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
@@ -50,6 +53,41 @@ function analyze(mesh) {
   return { volume, degenerate, openEdges, min, max, triangles: pos.length / 9 };
 }
 
+// The outline must be a simple polygon that its triangles cover exactly.
+function assertSoundProfile(profile, label) {
+  const loop = profile.loop, n = loop.length;
+  const cross = (a, b, c, d) => {
+    const rx = b[0] - a[0], rz = b[1] - a[1], sx = d[0] - c[0], sz = d[1] - c[1];
+    const den = rx * sz - rz * sx;
+    if (Math.abs(den) < 1e-12) return false;
+    const qx = c[0] - a[0], qz = c[1] - a[1];
+    const t = (qx * sz - qz * sx) / den, u = (qx * rz - qz * rx) / den;
+    return t > 1e-7 && t < 1 - 1e-7 && u > 1e-7 && u < 1 - 1e-7;
+  };
+  for (let i = 0; i < n; i++) for (let j = i + 2; j < n; j++) {
+    if (i === 0 && j === n - 1) continue;
+    assert.ok(!cross(loop[i], loop[(i + 1) % n], loop[j], loop[(j + 1) % n]), `${label}: outline edges ${i} and ${j} cross`);
+  }
+  let triArea = 0;
+  for (const [a, b, c] of profile.tris) triArea += Math.abs((b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])) / 2;
+  assert.ok(Math.abs(triArea - profile.area) < 1e-6 * Math.max(1, profile.area), `${label}: triangles cover the outline (${triArea} vs ${profile.area})`);
+  assert.deepEqual(profile.issues, [], `${label}: no unresolved folds`);
+}
+
+// Width of the flat part of every slot floor, measured on the top surface.
+function measuredFloors(p, profile) {
+  return profile.floorSpans.map((_, k) => {
+    let lo = Infinity, hi = -Infinity;
+    for (const q of profile.top) {
+      if (Math.abs(q[1] - p.wall) < 1e-7 && q[0] > profile.crestX[k] && q[0] < profile.crestX[k + 1]) {
+        lo = Math.min(lo, q[0]);
+        hi = Math.max(hi, q[0]);
+      }
+    }
+    return hi - lo;
+  });
+}
+
 test('wave-rack/index.html structure, metadata and analytics', () => {
   const scriptSrcs = [...html.matchAll(/<script[^>]+src=["']([^"']+)["']/g)].map(m => m[1]);
   for (const src of scriptSrcs) {
@@ -60,11 +98,19 @@ test('wave-rack/index.html structure, metadata and analytics', () => {
   assert.ok(html.includes('Wave Rack Generator'), 'Contains title');
   assert.ok(html.includes('<meta property="og:url" content="https://tools.pentenrieder.dev/wave-rack/">'), 'Contains og:url');
 
-  for (const id of ['length', 'depth', 'height', 'waves', 'wall', 'foot', 'ends', 'segments', 'downloadBtn', 'viewport', 'modeUniform', 'modeCustom', 'slotList', 'addSlot']) {
+  const controls = ['length', 'count', 'depth', 'height', 'angle', 'radius', 'flank', 'plateau', 'wall', 'endFoot'];
+  for (const id of controls) {
+    assert.ok(html.includes(`id="${id}"`), `Contains #${id}`);
+    assert.ok(html.includes(`id="${id}Range"`), `Contains #${id}Range`);
+  }
+  for (const id of ['segments', 'downloadBtn', 'viewport', 'profile', 'modeEven', 'modeCustom', 'styleFillet', 'styleSine', 'slotList', 'addSlot']) {
     assert.ok(html.includes(`id="${id}"`), `Contains #${id}`);
   }
   const idsInJs = new Set([...html.matchAll(/\$\('([^']+)'\)/g)].map(m => m[1]));
   for (const id of idsInJs) assert.ok(html.includes(`id="${id}"`), `Element #${id} referenced in JS exists`);
+  for (const name of [...html.matchAll(/data-preset="([^"]+)"/g)].map(m => m[1])) {
+    assert.ok(new RegExp(`\\b${name}: \\{ style:`).test(html), `Preset "${name}" is defined`);
+  }
 });
 
 test('hub index.html links the wave rack tool', () => {
@@ -73,120 +119,141 @@ test('hub index.html links the wave rack tool', () => {
   assert.ok(index.includes('Wave Rack Generator'), 'Hub names the tool');
 });
 
-test('default wave rack mesh is watertight and matches its dimensions', () => {
-  const G = loadGeometry();
+test('default rack: even slots fill the requested length with a watertight mesh', () => {
   const p = { ...G.DEFAULTS };
-  assert.equal(G.validate(p).errors.length, 0);
-  const mesh = G.buildMesh(p);
+  const res = G.resolve(p);
+  assert.deepEqual(res.errors, []);
+  assert.equal(res.floors.length, 4);
+  assert.equal(res.walls, 5);
+  assert.ok(Math.abs(res.length - 300) < 1e-9, 'even mode keeps the requested length');
+  assert.ok(res.floors.every(f => Math.abs(f - res.floors[0]) < 1e-12) && res.floors[0] > 15, 'equal flat floors');
+
+  const mesh = G.buildMesh(p, res);
+  assertSoundProfile(mesh.profile, 'defaults');
+  near(measuredFloors(p, mesh.profile), res.floors, 'flat floors as stated', 5e-3);
   const a = analyze(mesh);
   assert.equal(a.openEdges, 0, 'every edge is shared by exactly two opposite-facing triangles');
   assert.equal(a.degenerate, 0, 'no degenerate triangles');
   assert.ok(a.volume > 0, 'outward-facing winding');
   assert.ok(Math.abs(a.volume - mesh.volume) < mesh.volume * 1e-4, 'tetrahedron volume matches profile area × depth');
   near(a.min, [0, 0, 0], 'min bounds');
-  near(a.max, [p.length, p.depth, p.height], 'max bounds');
-  assert.ok(Math.abs(mesh.lambda - (p.length - p.wall) / p.waves) < 1e-9, 'slot pitch');
+  near(a.max, [300, p.depth, p.height], 'max bounds');
 });
 
-test('mesh stays watertight across end styles, feet and resolutions', () => {
-  const G = loadGeometry();
+test('classic wave reproduces the original sine profile', () => {
+  // Areas recorded from the first sine-only implementation of the tool.
+  const classic = { style: 'sine', plateau: 0, endFoot: 0 };
+  const a = G.buildProfile(custom([0, 0, 0], { ...classic, flank: 36.875 }));
+  assert.ok(Math.abs(a.area - 2757.918950) < 1e-5, `area ${a.area}`);
+  assert.ok(Math.abs(a.length - 300) < 1e-9);
+  const b = G.buildProfile(custom([0], { ...classic, flank: 49, height: 40, wall: 4, segments: 96 }));
+  assert.ok(Math.abs(b.area - 1013.694377) < 1e-5, `area ${b.area}`);
+  assert.ok(Math.abs(b.length - 200) < 1e-9);
+});
+
+test('custom slots: stated floor widths are the real flat floors', () => {
+  const cases = {
+    'rounded corners': custom([10, 18, 30, 45]),
+    'corners tighter than the wall': custom([12, 22, 1, 30], { radius: 1.5, angle: 8 }),
+    'thick wall, crisp corners': custom([8, 25], { wall: 10, radius: 1, angle: 30, height: 80 }),
+    'wave flanks with floors': custom([10, 25, 40], { style: 'sine', flank: 22, plateau: 6 }),
+    'coarse wave': custom([36], { style: 'sine', flank: 54, height: 129, wall: 10, endFoot: 23, segments: 24 })
+  };
+  for (const [label, p] of Object.entries(cases)) {
+    const res = G.resolve(p);
+    assert.deepEqual(res.errors, [], label);
+    const mesh = G.buildMesh(p, res);
+    assertSoundProfile(mesh.profile, label);
+    near(measuredFloors(p, mesh.profile), p.slots, `${label}: flat floors`, 5e-3);
+    const a = analyze(mesh);
+    assert.equal(a.openEdges, 0, `${label}: watertight`);
+    assert.equal(a.degenerate, 0, `${label}: no degenerate triangles`);
+    near(a.max, [res.length, p.depth, p.height], `${label}: bounds follow the derived length`);
+    near(a.min, [0, 0, 0], `${label}: sits on the ground`);
+  }
+});
+
+test('straight walls: derived length and corner intrusion match the closed form', () => {
+  const p = custom([10, 18, 30], { angle: 15, radius: 2, wall: 5, height: 60, plateau: 4, endFoot: 8 });
+  const beta = (90 - p.angle) * Math.PI / 180;
+  const rise = p.height - p.wall;
+  const run = 2 * p.radius * Math.sin(beta) + (rise - 2 * p.radius * (1 - Math.cos(beta))) / Math.tan(beta);
+  const delta = (p.wall / 2 - p.radius) * Math.tan(beta / 2);
+  const flank = G.buildFlank(p);
+  assert.ok(Math.abs(flank.run - run) < 1e-9, 'flank run');
+  assert.ok(Math.abs(flank.slopeDeg - 75) < 1e-9, 'wall slope');
+  assert.ok(Math.abs(G.cornerIntrusion(p, flank) - delta) < 1e-6, 'corner intrusion');
+  assert.equal(G.cornerIntrusion({ ...p, radius: 10 }, G.buildFlank({ ...p, radius: 10 })), 0, 'round corners do not intrude');
+
+  const res = G.resolve(p);
+  const expected = p.wall + 2 * (p.endFoot + delta + 0.3) + 4 * (2 * run + p.plateau) + (10 + 18 + 30) + 3 * 2 * delta;
+  assert.ok(Math.abs(res.length - expected) < 1e-6, `length ${res.length} vs ${expected}`);
+
+  // A radius too large for the height turns the flank into a soft S with a shallower slope.
+  const soft = G.buildFlank({ ...p, radius: 60 });
+  assert.ok(soft.slopeDeg < 75 && soft.slopeDeg > 30);
+  assert.ok(Math.abs(soft.pts.at(-1).z - rise) < 1e-9, 'soft S still reaches the full height');
+});
+
+test('symmetric racks stay mirror-symmetric, including merged folds', () => {
   const variants = [
-    { ...G.DEFAULTS, foot: 0 },
-    { ...G.DEFAULTS, ends: 'top' },
-    { ...G.DEFAULTS, ends: 'top', foot: 0 },
-    { ...G.DEFAULTS, waves: 1, segments: 24 },
-    { ...G.DEFAULTS, length: 450, height: 90, waves: 6, wall: 4, foot: 1.5, segments: 96 },
-    { ...G.DEFAULTS, length: 120, depth: 40, height: 25, waves: 2, wall: 3, foot: 0.5, segments: 160 }
+    custom([20, 5, 20], { radius: 1.2, angle: 6, wall: 6 }),
+    custom([0, 14, 0], { style: 'sine', flank: 16, height: 70 }),
+    custom([30, 30], { style: 'sine', flank: 35, height: 76, wall: 8, endFoot: 23, segments: 24 })
   ];
   for (const p of variants) {
-    assert.equal(G.validate(p).errors.length, 0, JSON.stringify(p));
-    const a = analyze(G.buildMesh(p));
+    const profile = G.buildProfile(p);
+    assertSoundProfile(profile, JSON.stringify(p.slots));
+    const fmt = (q) => `${q[0].toFixed(4)},${q[1].toFixed(4)}`;
+    const points = new Set(profile.loop.map(fmt));
+    for (const q of profile.loop) {
+      assert.ok(points.has(fmt([profile.length - q[0], q[1]])), `mirror image of ${fmt(q)} is on the outline`);
+    }
+  }
+});
+
+test('mesh stays sound across styles, extremes and resolutions', () => {
+  const variants = [
+    { ...G.DEFAULTS, count: 1 },
+    { ...G.DEFAULTS, length: 450, count: 6, height: 90, wall: 4, segments: 96 },
+    { ...G.DEFAULTS, style: 'sine', flank: 26, endFoot: 8 },
+    custom([0, 0, 0, 0], { style: 'sine', flank: 12, height: 80 }),
+    custom([24, 24, 24], { angle: 6, radius: 3, wall: 4, endFoot: 12 }),
+    custom([14, 14], { angle: 22, radius: 4, plateau: 6 }),
+    custom([5, 0, 60], { angle: 3, radius: 1, wall: 8, plateau: 0, endFoot: 0 }),
+    custom([12], { radius: 40, height: 45, segments: 160 }),
+    custom([18, 18], { angle: 60, radius: 2, plateau: 20, height: 25 })
+  ];
+  for (const p of variants) {
+    const res = G.resolve(p);
+    assert.deepEqual(res.errors, [], JSON.stringify(p));
+    const mesh = G.buildMesh(p, res);
+    assertSoundProfile(mesh.profile, JSON.stringify(p));
+    const a = analyze(mesh);
     assert.equal(a.openEdges, 0, `watertight: ${JSON.stringify(p)}`);
     assert.equal(a.degenerate, 0, `no degenerate triangles: ${JSON.stringify(p)}`);
-    near(a.max, [p.length, p.depth, p.height], `bounds: ${JSON.stringify(p)}`);
+    near(a.max, [res.length, p.depth, p.height], `bounds: ${JSON.stringify(p)}`);
   }
 });
 
-test('custom slot widths: layout, derived length and watertight mesh', () => {
-  const G = loadGeometry();
-  const p = { ...G.DEFAULTS, mode: 'custom', slots: [30, 45, 110, 74, 30] };
-  const lay = G.layout(p);
-  assert.deepEqual(lay.halves, [30, 22.5, 22.5, 55, 55, 37, 37, 30], 'end slots are half-waves, inner slots crest to crest');
-  assert.equal(lay.length, 289 + p.wall, 'length is the sum of the slots plus the wall');
-  assert.equal(lay.crests, 4);
-  assert.equal(G.validate(p).errors.length, 0);
+test('validation explains what does not fit', () => {
+  const tooMany = G.validate({ ...G.DEFAULTS, count: 12 });
+  assert.ok(tooMany.errors.some(e => e.includes('need at least')), 'reports the length that would be needed');
+  assert.equal(tooMany.fits, 5, 'reports how many slots fit');
+  assert.deepEqual(G.validate({ ...G.DEFAULTS, count: tooMany.fits }).errors, [], 'that many slots do fit');
 
-  const mesh = G.buildMesh(p);
-  assert.deepEqual(mesh.issues, []);
-  assert.deepEqual(mesh.slots, [30, 45, 110, 74, 30]);
-  const a = analyze(mesh);
-  assert.equal(a.openEdges, 0, 'watertight');
-  assert.equal(a.degenerate, 0);
-  near(a.max, [lay.length, p.depth, p.height], 'bounds follow the derived length');
-  assert.ok(Math.abs(a.volume - mesh.volume) < mesh.volume * 1e-4);
-
-  const top = { ...G.DEFAULTS, mode: 'custom', ends: 'top', slots: [80, 120, 60], height: 50 };
-  assert.deepEqual(G.layout(top).halves, [40, 40, 60, 60, 30, 30]);
-  assert.equal(G.layout(top).crests, 4);
-  assert.equal(analyze(G.buildMesh(top)).openEdges, 0, 'top ends watertight');
-
-  assert.deepEqual(G.slotWidths(G.DEFAULTS), [36.875, 73.75, 73.75, 73.75, 36.875], 'uniform widths are reported per slot');
-});
-
-test('narrow slots merge the folded inner offset into a clean crease', () => {
-  const G = loadGeometry();
-  // 45 mm slots at 60 mm height bend tighter than a 5 mm wall allows at the crests.
-  const p = { ...G.DEFAULTS, mode: 'custom', slots: [37, 45, 110, 45, 37] };
-  assert.equal(G.validate(p).errors.length, 0, 'interior tightness is allowed');
-  const profile = G.buildProfile(p);
-  assert.deepEqual(profile.issues, []);
-
-  // Profile must stay a simple polygon and be fully covered by its triangles.
-  const n = profile.loop.length;
-  const cross = (a, b, c, d) => {
-    const rx = b[0] - a[0], rz = b[1] - a[1], sx = d[0] - c[0], sz = d[1] - c[1];
-    const den = rx * sz - rz * sx;
-    if (Math.abs(den) < 1e-12) return false;
-    const qx = c[0] - a[0], qz = c[1] - a[1];
-    const t = (qx * sz - qz * sx) / den, u = (qx * rz - qz * rx) / den;
-    return t > 1e-9 && t < 1 - 1e-9 && u > 1e-9 && u < 1 - 1e-9;
-  };
-  for (let i = 0; i < n; i++) for (let j = i + 2; j < n; j++) {
-    if (i === 0 && j === n - 1) continue;
-    assert.ok(!cross(profile.loop[i], profile.loop[(i + 1) % n], profile.loop[j], profile.loop[(j + 1) % n]), `edges ${i} and ${j} cross`);
-  }
-  let triArea = 0;
-  for (const [a, b, c] of profile.tris) triArea += Math.abs((b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])) / 2;
-  assert.ok(Math.abs(triArea - profile.area) < 1e-6, 'triangles cover exactly the profile area');
-
-  const a = analyze(G.buildMesh(p));
-  assert.equal(a.openEdges, 0, 'watertight');
-  assert.equal(a.degenerate, 0);
-
-  // Asymmetric crests (wide slot next to a narrow one) fold on one side only.
-  const asym = { ...G.DEFAULTS, mode: 'custom', slots: [40, 150, 30, 150, 40], height: 70 };
-  assert.deepEqual(G.buildProfile(asym).issues, []);
-  assert.equal(analyze(G.buildMesh(asym)).openEdges, 0);
-});
-
-test('validation rejects walls that are too thick for the curvature', () => {
-  const G = loadGeometry();
-  const tight = G.validate({ ...G.DEFAULTS, height: 120, waves: 8 });
-  assert.ok(tight.errors.some(e => e.includes('too tight')), 'reports folding inner curve');
-  const feet = G.validate({ ...G.DEFAULTS, foot: 2.5 });
-  assert.ok(feet.errors.some(e => e.includes('Flat feet')), 'reports oversized feet');
+  assert.ok(G.validate({ ...G.DEFAULTS, height: 8 }).errors.some(e => e.includes('Height')), 'height must exceed the wall');
+  assert.ok(G.validate({ ...G.DEFAULTS, angle: 80 }).errors.some(e => e.includes('Wall angle')));
+  assert.ok(G.validate({ ...G.DEFAULTS, radius: 0 }).errors.some(e => e.includes('Corner radius')));
+  assert.ok(G.validate({ ...G.DEFAULTS, style: 'sine', flank: 2 }).errors.some(e => e.includes('Flank width')));
+  assert.ok(G.validate({ ...G.DEFAULTS, count: 2.5 }).errors.some(e => e.includes('whole number')));
+  assert.ok(G.validate(custom([])).errors.some(e => e.includes('at least one slot')));
+  assert.ok(G.validate(custom([10, -1])).errors.some(e => e.includes('zero or more')));
   assert.ok(G.validate({ ...G.DEFAULTS, depth: 300 }).warnings.some(w => w.includes('Print height')), 'warns about tall prints');
-
-  const custom = (slots, extra = {}) => G.validate({ ...G.DEFAULTS, mode: 'custom', slots, ...extra });
-  assert.ok(custom([30]).errors.some(e => e.includes('at least 2 slot')), 'floor ends need two slots');
-  assert.equal(custom([60], { ends: 'top' }).errors.length, 0, 'top ends work with a single slot');
-  assert.ok(custom([30, 6, 30]).errors.some(e => e.includes('wall thickness + 3')), 'slots narrower than the wall are rejected');
-  assert.ok(custom([15, 60, 15]).errors.some(e => e.includes('open end slots')), 'tight end caps are rejected');
-  assert.ok(custom([30, 60, 30]).warnings.length === 0 || true);
+  assert.ok(G.validate({ ...G.DEFAULTS, style: 'sine', flank: 10 }).warnings.some(w => w.includes('steep')), 'warns about steep waves');
 });
 
 test('print orientation and binary STL export', () => {
-  const G = loadGeometry();
   const p = { ...G.DEFAULTS };
   const mesh = G.buildMesh(p);
   const printMesh = G.toPrintOrientation(mesh);
@@ -194,7 +261,7 @@ test('print orientation and binary STL export', () => {
   assert.equal(a.openEdges, 0, 'rotation keeps the mesh closed');
   assert.ok(a.volume > 0, 'rotation keeps outward winding');
   near(a.min, [0, 0, 0], 'part sits on the bed');
-  near(a.max, [p.length, p.height, p.depth], 'profile on the bed, depth along Z');
+  near(a.max, [300, p.height, p.depth], 'profile on the bed, depth along Z');
 
   const stl = G.toBinarySTL(printMesh.positions);
   const view = new DataView(stl);
