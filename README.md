@@ -51,7 +51,10 @@
 * **Key Capabilities:**
   * **Slots by floor width:** either fit a number of equal slots into a given length, or list a flat floor width per slot (board thickness plus play) and let the length follow. The stated width is the real flat floor, also when corners are tighter than the wall thickness.
   * **Wall shapes:** straight walls with rounded corners (lean angle + corner radius, turning into soft arcs for large radii) or wave flanks, with an optional flat top and end feet. Presets: Arches, Slim dividers, Trapezoid, Soft wave, Classic wave.
-  * **Ripples:** optional fine grooves that follow the contour of the walls (depth and spacing adjustable). They are cut into the outside only, measured from the top of each wall, and fade out towards the floors, so slot widths, height and length stay exactly as set; they print as vertical ribs without any overhang.
+  * **Ripples:** optional fine grooves cut into the top surface (depth and spacing adjustable). They only go inwards, so slot widths, height and length stay exactly as set.
+    * *Front to back:* the grooves run across the depth, measured from the top of each wall. They print as vertical ribs without any overhang.
+    * *Along the length:* the grooves follow the wave from one end to the other. In print they are gentle overhangs of at most 45°, still without supports.
+    * *On the slot floors too:* optionally the grooves also cover the floors, so boards rest on ridges and can drain; otherwise they fade out towards the floors.
   * **Constant wall thickness:** the profile is a centerline offset to both sides; folds of the inner offset at tight corners are merged into clean creases along the surface envelope.
   * **Live preview:** 3D view (orbit, zoom, pinch; "in use" and "on the print bed") plus a side profile that draws a board into every slot.
   * **Watertight STL export:** every edge is shared by exactly two triangles, with floor widths, length, wall slope, volume and weight estimate shown live.
