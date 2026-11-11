@@ -54,8 +54,8 @@ function analyze(mesh) {
 }
 
 // The outline must be a simple polygon that its triangles cover exactly.
-function assertSoundProfile(profile, label) {
-  const loop = profile.loop, n = loop.length;
+function assertSimpleOutline(loop, label) {
+  const n = loop.length;
   const cross = (a, b, c, d) => {
     const rx = b[0] - a[0], rz = b[1] - a[1], sx = d[0] - c[0], sz = d[1] - c[1];
     const den = rx * sz - rz * sx;
@@ -68,6 +68,10 @@ function assertSoundProfile(profile, label) {
     if (i === 0 && j === n - 1) continue;
     assert.ok(!cross(loop[i], loop[(i + 1) % n], loop[j], loop[(j + 1) % n]), `${label}: outline edges ${i} and ${j} cross`);
   }
+}
+
+function assertSoundProfile(profile, label) {
+  assertSimpleOutline(profile.loop, label);
   let triArea = 0;
   for (const [a, b, c] of profile.tris) triArea += Math.abs((b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])) / 2;
   assert.ok(Math.abs(triArea - profile.area) < 1e-6 * Math.max(1, profile.area), `${label}: triangles cover the outline (${triArea} vs ${profile.area})`);
@@ -322,16 +326,7 @@ test('ripples can cover the slot floors and can run along the length', () => {
 
     // The deepest cross-section is a valid outline that is cut by the ripple depth at most.
     const deep = profile.loop.map((q, i) => (lw.shift[i] ? [q[0] + lw.shift[i][0], q[1] + lw.shift[i][1]] : q));
-    const n = deep.length;
-    for (let i = 0; i < n; i++) for (let j = i + 2; j < n; j++) {
-      if (i === 0 && j === n - 1) continue;
-      const a = deep[i], b = deep[(i + 1) % n], c = deep[j], d = deep[(j + 1) % n];
-      const den = (b[0] - a[0]) * (d[1] - c[1]) - (b[1] - a[1]) * (d[0] - c[0]);
-      if (Math.abs(den) < 1e-12) continue;
-      const t = ((c[0] - a[0]) * (d[1] - c[1]) - (c[1] - a[1]) * (d[0] - c[0])) / den;
-      const u = ((c[0] - a[0]) * (b[1] - a[1]) - (c[1] - a[1]) * (b[0] - a[0])) / den;
-      assert.ok(!(t > 1e-7 && t < 1 - 1e-7 && u > 1e-7 && u < 1 - 1e-7), `${label}: deepest section crosses itself at ${i}/${j}`);
-    }
+    assertSimpleOutline(deep, `${label}: deepest section`);
     const lengths = lw.shift.filter(Boolean).map(v => Math.hypot(v[0], v[1]));
     assert.ok(Math.max(...lengths) <= Math.SQRT2 * 0.8 + 1e-9, `${label}: corners are cut along their mitre at most`);
     assert.ok(lengths.some(v => Math.abs(v - 0.8) < 1e-9), `${label}: full depth is reached`);
@@ -380,6 +375,103 @@ test('ripples can cover the slot floors and can run along the length', () => {
   assert.ok(steep.errors.some(e => e.includes('at most 1.9 mm') && e.includes('supports')), 'too deep for a 45° overhang');
   assert.deepEqual(G.validate({ ...G.DEFAULTS, ripple: 1.9, rippleSpacing: 6, rippleDir: 'along' }).errors, []);
   assert.deepEqual(G.validate({ ...G.DEFAULTS, ripple: 2.4, rippleSpacing: 6 }).errors, [], 'front-to-back grooves have no overhang limit');
+});
+
+test('ripples can cover the underside and can be shaped like rolls', () => {
+  const base = custom([18, 30, 18], { endFoot: 10, depth: 36, wall: 6, ripple: 1, rippleSpacing: 6 });
+  const smooth = G.buildProfile({ ...base, ripple: 0 });
+  const f4 = (v) => (Math.abs(v) < 5e-5 ? 0 : v).toFixed(4);
+  const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+  const overhang = (mesh) => {
+    const pos = mesh.positions;
+    let worst = 0;
+    for (let i = 0; i < pos.length; i += 9) {
+      const ux = pos[i + 3] - pos[i], uy = pos[i + 4] - pos[i + 1], uz = pos[i + 5] - pos[i + 2];
+      const vx = pos[i + 6] - pos[i], vy = pos[i + 7] - pos[i + 1], vz = pos[i + 8] - pos[i + 2];
+      const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+      if (pos[i + 1] === 0 && pos[i + 4] === 0 && pos[i + 7] === 0) continue;
+      worst = Math.max(worst, -ny / Math.hypot(nx, ny, nz));
+    }
+    return Math.asin(worst) * 180 / Math.PI;
+  };
+
+  // Front to back: the underside is grooved in step with the top.
+  for (const shape of ['soft', 'round']) for (const floors of [false, true]) {
+    const p = { ...base, rippleBoth: true, rippleShape: shape, rippleFloors: floors };
+    const label = `cross, both sides, ${shape}${floors ? ', floors' : ''}`;
+    const res = G.resolve(p);
+    assert.deepEqual(res.errors, [], label);
+    const mesh = G.buildMesh(p, res), profile = mesh.profile;
+    assertSoundProfile(profile, label);
+    const oneSided = G.buildProfile({ ...p, rippleBoth: false });
+    assert.ok(profile.area < oneSided.area - 10, `${label}: the underside loses material too`);
+    assert.equal(profile.top.length, profile.bottom.length);
+    const thickness = profile.top.map((t, i) => dist(t, profile.bottom[i]));
+    assert.ok(Math.min(...thickness) > p.wall - 2 * p.ripple - 1e-6, `${label}: never thinner than wall minus both grooves`);
+    assert.ok(Math.min(...thickness) < p.wall - 2 * p.ripple + 0.05, `${label}: grooves of both sides meet at the same place`);
+    const zs = profile.loop.map(q => q[1]);
+    assert.ok(Math.abs(Math.min(...zs)) < 1e-9 && Math.abs(Math.max(...zs) - p.height) < 1e-9, `${label}: height unchanged`);
+    near(measuredFloors(p, profile), p.slots, `${label}: floor widths`, 5e-3);
+    const points = new Set(profile.loop.map(q => `${f4(q[0])},${f4(q[1])}`));
+    for (const q of profile.loop) assert.ok(points.has(`${f4(profile.length - q[0])},${f4(q[1])}`), `${label}: mirror symmetric`);
+    const underFloor = profile.bottom.filter(q => profile.floorSpans.some(([a, b]) => q[0] > a + 1 && q[0] < b - 1));
+    assert.equal(underFloor.some(q => q[1] > 0.5), floors, `${label}: the floor underside is grooved only with the floor option`);
+    const m = analyze(mesh);
+    assert.equal(m.openEdges, 0, `${label}: watertight`);
+    assert.equal(m.degenerate, 0, `${label}: no degenerate triangles`);
+  }
+
+  // Round ridges remove less material than soft waves of the same depth and
+  // meet in a crease: the outline turns sharply at the bottom of a groove.
+  const soft = G.buildProfile({ ...base, rippleShape: 'soft' }), round = G.buildProfile({ ...base, rippleShape: 'round' });
+  assertSoundProfile(round, 'round');
+  assert.ok(round.area > soft.area + 5 && round.area < smooth.area - 5, 'round ridges keep more material than soft waves');
+  const sharpest = (profile) => {
+    let worst = 0;
+    const t = profile.top;
+    for (let i = 1; i < t.length - 1; i++) {
+      const a = [t[i][0] - t[i - 1][0], t[i][1] - t[i - 1][1]], b = [t[i + 1][0] - t[i][0], t[i + 1][1] - t[i][1]];
+      const la = Math.hypot(a[0], a[1]), lb = Math.hypot(b[0], b[1]);
+      if (la < 1e-6 || lb < 1e-6 || t[i][1] < base.wall + 15) continue;        // walls only, away from the floor corners
+      worst = Math.max(worst, Math.acos(Math.max(-1, Math.min(1, (a[0] * b[0] + a[1] * b[1]) / (la * lb)))) * 180 / Math.PI);
+    }
+    return worst;
+  };
+  assert.ok(sharpest(round) > 25, `round grooves have a crease (${sharpest(round).toFixed(1)}°)`);
+  assert.ok(sharpest(soft) < 15, `soft grooves have none (${sharpest(soft).toFixed(1)}°)`);
+
+  // Along the length: the underside moves up where the top moves down.
+  for (const shape of ['soft', 'round']) {
+    const p = { ...base, rippleDir: 'along', rippleBoth: true, rippleFloors: true, rippleShape: shape };
+    const label = `along, both sides, ${shape}`;
+    const res = G.resolve(p);
+    assert.deepEqual(res.errors, [], label);
+    const mesh = G.buildMesh(p, res), lw = mesh.profile.lengthwise;
+    assert.equal(lw.shape, shape);
+    const loop = mesh.profile.loop;
+    const up = loop.filter((q, i) => lw.shift[i] && lw.shift[i][1] > 0.5), down = loop.filter((q, i) => lw.shift[i] && lw.shift[i][1] < -0.5);
+    assert.ok(up.length > 10 && down.length > 10, `${label}: both sides are grooved`);
+    assert.ok(up.some(q => q[1] < 1e-9), `${label}: the floor underside is grooved`);
+    const deep = loop.map((q, i) => (lw.shift[i] ? [q[0] + lw.shift[i][0], q[1] + lw.shift[i][1]] : q));
+    assertSimpleOutline(deep, `${label}: deepest section`);
+    const m = analyze(mesh);
+    assert.equal(m.openEdges, 0, `${label}: watertight`);
+    assert.equal(m.degenerate, 0, `${label}: no degenerate triangles`);
+    near(m.min, [0, 0, 0], `${label}: bounds`);
+    near(m.max, [res.length, p.depth, p.height], `${label}: bounds`);
+    assert.ok(Math.abs(m.volume - mesh.volume) < 1e-4 * mesh.volume, `${label}: volume`);
+    const oneSided = G.buildMesh({ ...p, rippleBoth: false });
+    assert.ok(mesh.volume < oneSided.volume - 100, `${label}: the underside loses material too`);
+    assert.ok(overhang(mesh) <= 45.5, `${label}: overhang ${overhang(mesh).toFixed(1)}°`);
+  }
+
+  // Limits: both sides share the wall, round grooves are steeper than soft ones.
+  assert.ok(G.validate({ ...G.DEFAULTS, ripple: 2, rippleBoth: true }).errors.some(e => e.includes('both sides') && e.includes('at most 1.7 mm')));
+  assert.deepEqual(G.validate({ ...G.DEFAULTS, ripple: 1.7, rippleBoth: true }).errors, []);
+  const steep = G.validate({ ...G.DEFAULTS, ripple: 1.5, rippleSpacing: 6, rippleDir: 'along', rippleShape: 'round' });
+  assert.ok(steep.errors.some(e => e.includes('at most 1.2 mm') && e.includes('supports')), 'round lengthwise grooves are limited earlier');
+  assert.deepEqual(G.validate({ ...G.DEFAULTS, ripple: 1.5, rippleSpacing: 6, rippleDir: 'along' }).errors, []);
+  assert.deepEqual(G.validate({ ...G.DEFAULTS, ripple: 1.2, rippleSpacing: 6, rippleDir: 'along', rippleShape: 'round' }).errors, []);
 });
 
 test('validation explains what does not fit', () => {
