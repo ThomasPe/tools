@@ -98,7 +98,7 @@ test('wave-rack/index.html structure, metadata and analytics', () => {
   assert.ok(html.includes('Wave Rack Generator'), 'Contains title');
   assert.ok(html.includes('<meta property="og:url" content="https://tools.pentenrieder.dev/wave-rack/">'), 'Contains og:url');
 
-  const controls = ['length', 'count', 'depth', 'height', 'angle', 'radius', 'flank', 'plateau', 'wall', 'endFoot'];
+  const controls = ['length', 'count', 'depth', 'height', 'angle', 'radius', 'flank', 'plateau', 'ripple', 'rippleSpacing', 'wall', 'endFoot'];
   for (const id of controls) {
     assert.ok(html.includes(`id="${id}"`), `Contains #${id}`);
     assert.ok(html.includes(`id="${id}Range"`), `Contains #${id}Range`);
@@ -234,6 +234,46 @@ test('mesh stays sound across styles, extremes and resolutions', () => {
     assert.equal(a.degenerate, 0, `no degenerate triangles: ${JSON.stringify(p)}`);
     near(a.max, [res.length, p.depth, p.height], `bounds: ${JSON.stringify(p)}`);
   }
+});
+
+test('ripples groove the outside of the walls without changing floors, height or length', () => {
+  const smooth = custom([10, 18, 30], { endFoot: 10 });
+  const rippled = { ...smooth, ripple: 0.8, rippleSpacing: 6 };
+  const a = G.buildProfile(smooth), b = G.buildProfile(rippled);
+  assertSoundProfile(b, 'rippled');
+  assert.ok(Math.abs(b.length - a.length) < 1e-9, 'same length');
+  near(measuredFloors(rippled, b), rippled.slots, 'floors stay flat and as wide as stated', 5e-3);
+  const xs = b.loop.map(q => q[0]), zs = b.loop.map(q => q[1]);
+  assert.ok(Math.abs(Math.max(...zs) - rippled.height) < 1e-9, 'walls keep their full height');
+  assert.ok(Math.abs(Math.min(...zs)) < 1e-9, 'still sits on the ground');
+  assert.ok(Math.abs(Math.min(...xs)) < 1e-9 && Math.abs(Math.max(...xs) - b.length) < 1e-9, 'ends are untouched');
+  assert.ok(b.area < a.area - 20, 'grooves remove material');
+  assert.ok(b.loop.length > a.loop.length * 3, 'walls are sampled finely enough for the grooves');
+
+  // Mirror symmetry and a watertight mesh, also on slim walls that are solid near the top.
+  for (const p of [
+    { ...G.DEFAULTS, ripple: 1, rippleSpacing: 5 },
+    custom([24, 24], { angle: 6, radius: 3, wall: 4, endFoot: 12, ripple: 1.2, rippleSpacing: 4 }),
+    custom([0, 20, 0], { style: 'sine', flank: 12, height: 80, ripple: 1.5, rippleSpacing: 3 }),
+    custom([14], { angle: 22, radius: 4, plateau: 20, ripple: 0.6, rippleSpacing: 3.5 })
+  ]) {
+    const res = G.resolve(p);
+    assert.deepEqual(res.errors, [], JSON.stringify(p));
+    const mesh = G.buildMesh(p, res);
+    assertSoundProfile(mesh.profile, JSON.stringify(p));
+    const m = analyze(mesh);
+    assert.equal(m.openEdges, 0, `watertight: ${JSON.stringify(p)}`);
+    assert.equal(m.degenerate, 0, `no degenerate triangles: ${JSON.stringify(p)}`);
+    near(m.max, [res.length, p.depth, p.height], `bounds: ${JSON.stringify(p)}`);
+    const fmt = (q) => `${q[0].toFixed(4)},${q[1].toFixed(4)}`;
+    const points = new Set(mesh.profile.loop.map(fmt));
+    for (const q of mesh.profile.loop) assert.ok(points.has(fmt([res.length - q[0], q[1]])), `mirror image of ${fmt(q)} is on the outline`);
+  }
+
+  assert.deepEqual(G.buildProfile({ ...smooth, ripple: 0, rippleSpacing: 3 }).loop, a.loop, 'depth 0 leaves the profile untouched');
+  assert.ok(G.validate({ ...G.DEFAULTS, ripple: 4 }).errors.some(e => e.includes('1.5 mm must remain')), 'grooves may not eat the wall');
+  assert.ok(G.validate({ ...G.DEFAULTS, ripple: 2, rippleSpacing: 3 }).errors.some(e => e.includes('half as deep')), 'grooves may not be deeper than half their spacing');
+  assert.ok(G.validate({ ...G.DEFAULTS, ripple: 0.5, rippleSpacing: 1 }).errors.some(e => e.includes('at least 2 mm')));
 });
 
 test('validation explains what does not fit', () => {

@@ -301,6 +301,21 @@
             <input type="number" id="plateau" min="0" max="200" step="0.5">
           </div>
         </div>
+        <div class="field">
+          <div class="field-head"><label for="ripple">Ripple depth</label><span class="unit">mm &middot; 0 = smooth</span></div>
+          <div class="field-row">
+            <input type="range" id="rippleRange" min="0" max="2.5" step="0.1">
+            <input type="number" id="ripple" min="0" max="10" step="0.1">
+          </div>
+          <p class="help">Fine grooves that follow the contour of the walls. They are cut into the outside only, so floors, slot widths and height stay as set.</p>
+        </div>
+        <div class="field" id="rippleSpacingField">
+          <div class="field-head"><label for="rippleSpacing">Ripple spacing</label><span class="unit">mm</span></div>
+          <div class="field-row">
+            <input type="range" id="rippleSpacingRange" min="2" max="20" step="0.5">
+            <input type="number" id="rippleSpacing" min="2" max="100" step="0.5">
+          </div>
+        </div>
 
         <details>
           <summary>Fine tuning</summary>
@@ -408,6 +423,8 @@
         radius: 6,         // fillet: corner radius of the centerline in mm
         plateau: 0,        // flat width on top of every wall in mm
         endFoot: 10,       // flat foot outside the two outer walls in mm
+        ripple: 0,         // depth of the grooves cut into the outside of the walls in mm (0 = smooth)
+        rippleSpacing: 6,  // distance between two grooves along the wall surface in mm
         segments: 48
       });
 
@@ -579,6 +596,13 @@
           return { errors, warnings };
         }
         if (p.plateau < 0 || p.endFoot < 0) errors.push('Plateau and end feet cannot be negative.');
+        const ripple = p.ripple || 0;
+        if (!num(ripple) || ripple < 0) errors.push('Ripple depth cannot be negative.');
+        else if (ripple > 0) {
+          if (ripple > p.wall - 1.5) errors.push(`Ripples can be at most ${Math.max(0, p.wall - 1.5).toFixed(1)} mm deep with a ${p.wall} mm wall (1.5 mm must remain).`);
+          if (!num(p.rippleSpacing) || p.rippleSpacing < 2) errors.push('Ripple spacing must be at least 2 mm.');
+          else if (ripple > p.rippleSpacing / 2) errors.push(`Ripples can be at most half as deep as their spacing (${(p.rippleSpacing / 2).toFixed(1)} mm here).`);
+        }
         if (p.height < p.wall + 5) errors.push(`Height must be at least ${p.wall + 5} mm (wall thickness + 5 mm).`);
         if (p.style === 'sine') {
           if (!num(p.flank) || p.flank < 5) errors.push('Flank width must be at least 5 mm.');
@@ -671,14 +695,16 @@
           x += flank.run;
         };
 
-        const crestIdx = [], floorIdx = [], floorSpans = [], crestX = [];
+        const crestIdx = [], floorIdx = [], floorSpans = [], crestX = [], wallSpans = [];
         flat(endFlat, zLow);
         for (let k = 0; k <= floors.length; k++) {
+          const wallStart = C.length - 1;
           flankUp();
           const x0 = x;
           crestIdx.push(flat(res.plateau, zLow + (p.height - p.wall)));
           crestX.push((x0 + x) / 2);
           flankDown();
+          wallSpans.push([wallStart, C.length - 1]);
           if (k < floors.length) {
             const c = floors[k] + 2 * delta;
             floorSpans.push([x + delta, x + c - delta]);
@@ -686,7 +712,7 @@
           }
         }
         flat(endFlat, zLow);
-        const N = C.length - 1;
+        let N = C.length - 1;
 
         const T = [], B = [];
         for (let i = 0; i <= N; i++) {
@@ -708,6 +734,70 @@
         }
         for (let i = 0; i < bBounds.length - 1; i++) {
           if (!mergeFold(B, bBounds[i], bBounds[i + 1], -1)) issues.push(`Wall ${i + 1} is too narrow for this wall thickness.`);
+        }
+
+        // Ripples: grooves cut into the outside of every wall, following the
+        // contour. They are measured along the surface from the top of the
+        // wall (so each wall is symmetric and keeps its full height), only go
+        // inwards (so slots never get narrower), and fade out towards the
+        // floor, which stays flat.
+        const ripple = p.ripple > 0 ? p.ripple : 0;
+        if (ripple) {
+          // The walls need far more points than the smooth shape does. New
+          // points go onto the existing surface chords, after the folds were
+          // merged, so the smooth shape itself is untouched.
+          const step = Math.max(0.25, p.rippleSpacing / 16);
+          const inWall = new Array(N).fill(false);
+          for (const [i0, i1] of wallSpans) for (let i = i0; i < i1; i++) inWall[i] = true;
+          const lerp = (a, b, u) => [a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u];
+          // Where the underside was merged into a crease the wall is solid and
+          // narrow; grooves fade out towards those parts.
+          const solid = B.map((b, i) => Math.hypot(b[0] - (C[i][0] + tangents[i][1] * r), b[1] - (C[i][1] - tangents[i][0] * r)) > 1e-7);
+          const dC = [], dT = [], dB = [], dTan = [], dSolid = [], map = [];
+          for (let i = 0; i <= N; i++) {
+            map.push(dC.length);
+            dC.push(C[i]); dT.push(T[i]); dB.push(B[i]); dTan.push(tangents[i]); dSolid.push(solid[i]);
+            if (i === N || !inWall[i]) continue;
+            const k = Math.ceil(Math.hypot(T[i + 1][0] - T[i][0], T[i + 1][1] - T[i][1]) / step);
+            for (let j = 1; j < k; j++) {
+              const u = j / k, t = lerp(tangents[i], tangents[i + 1], u), len = Math.hypot(t[0], t[1]) || 1;
+              dC.push(lerp(C[i], C[i + 1], u)); dT.push(lerp(T[i], T[i + 1], u)); dB.push(lerp(B[i], B[i + 1], u));
+              dTan.push([t[0] / len, t[1] / len]);
+              dSolid.push(solid[i] || solid[i + 1]);
+            }
+          }
+          const flats = [...onFlat].map(i => map[i]);
+          onFlat.clear();
+          flats.forEach(i => onFlat.add(i));
+          C.length = 0; T.length = 0; B.length = 0; tangents.length = 0;
+          C.push(...dC); T.push(...dT); B.push(...dB); tangents.push(...dTan);
+          N = C.length - 1;
+
+          const dead = 1.5 * p.wall, ramp = p.rippleSpacing;
+          wallSpans.forEach(([w0, w1], k) => {
+            const i0 = map[w0], i1 = map[w1], top = map[crestIdx[k]];
+            const cum = [0];
+            for (let i = i0 + 1; i <= i1; i++) cum.push(cum[cum.length - 1] + Math.hypot(T[i][0] - T[i - 1][0], T[i][1] - T[i - 1][1]));
+            const total = cum[cum.length - 1], apex = cum[top - i0];
+            // Distance along the surface to the nearest solid part of the wall.
+            const toSolid = new Array(i1 - i0 + 1).fill(Infinity);
+            for (let i = i0, last = -Infinity; i <= i1; i++) {
+              if (dSolid[i]) last = cum[i - i0];
+              toSolid[i - i0] = cum[i - i0] - last;
+            }
+            for (let i = i1, last = Infinity; i >= i0; i--) {
+              if (dSolid[i]) last = cum[i - i0];
+              toSolid[i - i0] = Math.min(toSolid[i - i0], last - cum[i - i0]);
+            }
+            const smooth = (v) => { const c = Math.min(1, Math.max(0, v)); return c * c * (3 - 2 * c); };
+            for (let i = i0; i <= i1; i++) {
+              const sAlong = cum[i - i0];
+              const fade = smooth((Math.min(sAlong, total - sAlong) - dead) / ramp) * smooth(toSolid[i - i0] / ramp);
+              if (fade <= 0) continue;
+              const d = -ripple * fade * (1 - Math.cos(2 * Math.PI * (sAlong - apex) / p.rippleSpacing)) / 2;
+              T[i] = [T[i][0] - tangents[i][1] * d, T[i][1] + tangents[i][0] * d];
+            }
+          });
         }
 
         // Weld points that ended up closer than 0.1 µm so the mesh has no
@@ -902,7 +992,7 @@
       const $ = (id) => document.getElementById(id);
       const G = WaveGeometry;
 
-      const numericKeys = ['length', 'count', 'depth', 'height', 'angle', 'radius', 'flank', 'plateau', 'wall', 'endFoot'];
+      const numericKeys = ['length', 'count', 'depth', 'height', 'angle', 'radius', 'flank', 'plateau', 'ripple', 'rippleSpacing', 'wall', 'endFoot'];
       const inputs = {}, ranges = {};
       for (const key of numericKeys) {
         inputs[key] = document.getElementById(key);
@@ -949,7 +1039,7 @@
         applyMode();
       }
 
-      const HASH_KEYS = { l: 'length', n: 'count', d: 'depth', h: 'height', t: 'wall', fl: 'flank', a: 'angle', r: 'radius', p: 'plateau', e: 'endFoot' };
+      const HASH_KEYS = { l: 'length', n: 'count', d: 'depth', h: 'height', t: 'wall', fl: 'flank', a: 'angle', r: 'radius', p: 'plateau', e: 'endFoot', rd: 'ripple', rs: 'rippleSpacing' };
 
       function paramsFromHash() {
         const p = { ...G.DEFAULTS, slots: [] };
@@ -976,7 +1066,9 @@
         const q = [custom ? `m=c&w=${p.slots.join(',')}` : `m=e&l=${p.length}&n=${p.count}`];
         q.push(`d=${p.depth}`, `h=${p.height}`, `t=${p.wall}`);
         q.push(p.style === 'sine' ? `st=s&fl=${p.flank}` : `st=f&a=${p.angle}&r=${p.radius}`);
-        q.push(`p=${p.plateau}`, `e=${p.endFoot}`, `s=${p.segments}`);
+        q.push(`p=${p.plateau}`, `e=${p.endFoot}`);
+        if (p.ripple > 0) q.push(`rd=${p.ripple}`, `rs=${p.rippleSpacing}`);
+        q.push(`s=${p.segments}`);
         return `#${q.join('&')}`;
       }
 
@@ -1319,6 +1411,7 @@
         const p = readParams();
         const res = G.resolve(p);
         history.replaceState(null, '', hashFromParams(p));
+        $('rippleSpacingField').hidden = !(p.ripple > 0);
         const active = activePreset(p);
         for (const btn of document.querySelectorAll('.presets button')) btn.classList.toggle('active', btn.dataset.preset === active);
 
