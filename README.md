@@ -54,7 +54,7 @@
   * **Ripples:** optional fine grooves cut into the top surface (depth and spacing adjustable). They only go inwards, so slot widths, height and length stay exactly as set.
     * *Front to back:* the grooves run across the depth, measured from the top of each wall. They print as vertical ribs without any overhang.
     * *Along the length:* the grooves follow the wave from one end to the other. In print they are gentle overhangs of at most 45°, still without supports.
-    * *On the slot floors too:* optionally the grooves also cover the floors, so boards rest on ridges and can drain; otherwise they fade out towards the floors.
+    * *On the floors and feet too:* optionally the grooves also cover the slot floors and the end feet, so boards rest on ridges and can drain; otherwise they fade out towards floors and feet. Lengthwise grooves then run from one outer edge of the rack to the other, rounded ends included.
     * *On the underside too:* optionally the underside gets the same grooves, in step with the top, so the wall turns into a row of beads. They fade out inside tight bends, where the underside is too short for them.
     * *Soft waves or round rolls:* the ridges are either a soft wave or circular arcs that meet in a sharp crease. Round rolls on both sides, with a spacing close to the wall thickness, make the rack look as if it were built from rolls of clay.
   * **Constant wall thickness:** the profile is a centerline offset to both sides; folds of the inner offset at tight corners are merged into clean creases along the surface envelope.

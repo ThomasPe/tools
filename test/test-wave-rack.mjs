@@ -474,6 +474,65 @@ test('ripples can cover the underside and can be shaped like rolls', () => {
   assert.deepEqual(G.validate({ ...G.DEFAULTS, ripple: 1.2, rippleSpacing: 6, rippleDir: 'along', rippleShape: 'round' }).errors, []);
 });
 
+test('the end feet are grooved together with the floors', () => {
+  const base = custom([18, 30, 18], { endFoot: 10, depth: 36, wall: 6, ripple: 1, rippleSpacing: 5 });
+  const r = base.wall / 2;
+  const footTop = (profile) => profile.top.filter(q => q[0] > r + 0.5 && q[0] < r + base.endFoot - 0.5);
+  const f4 = (v) => (Math.abs(v) < 5e-5 ? 0 : v).toFixed(4);
+
+  // Front to back: a whole number of grooves between the rounded end and the outer wall.
+  const plainFeet = G.buildProfile(base);
+  assert.ok(footTop(plainFeet).every(q => Math.abs(q[1] - base.wall) < 1e-9), 'without the floor option the feet stay flat');
+  for (const both of [false, true]) {
+    const p = { ...base, rippleFloors: true, rippleBoth: both };
+    const profile = G.buildProfile(p);
+    assertSoundProfile(profile, `cross feet${both ? ', both sides' : ''}`);
+    const zs = footTop(profile).map(q => q[1]);
+    assert.ok(Math.abs(Math.min(...zs) - (base.wall - 1)) < 0.02, 'feet are grooved to the ripple depth');
+    assert.ok(Math.max(...zs) <= base.wall + 1e-9, 'feet never rise above their level');
+    const grooves = profile.top.filter((q, i, t) => i > 0 && i < t.length - 1 && q[0] < r + base.endFoot && q[1] < t[i - 1][1] && q[1] < t[i + 1][1]);
+    assert.equal(grooves.length, 2, 'two grooves fit on a 10 mm foot at 5 mm spacing');
+    const under = profile.bottom.filter(q => q[0] > r + 0.5 && q[0] < r + base.endFoot - 0.5).map(q => q[1]);
+    assert.equal(Math.max(...under) > 0.9, both, 'the underside of the feet follows only with the underside option');
+    assert.ok(Math.abs(Math.min(...profile.loop.map(q => q[0]))) < 1e-9 && Math.abs(Math.max(...profile.loop.map(q => q[0])) - profile.length) < 1e-9, 'the rounded ends keep the length');
+    const points = new Set(profile.loop.map(q => `${f4(q[0])},${f4(q[1])}`));
+    for (const q of profile.loop) assert.ok(points.has(`${f4(profile.length - q[0])},${f4(q[1])}`), 'mirror symmetric');
+    const m = analyze(G.buildMesh(p));
+    assert.equal(m.openEdges, 0);
+    assert.equal(m.degenerate, 0);
+  }
+
+  // Along the length: grooves start at the outer edges and include the rounded ends.
+  const fadeOut = G.buildProfile({ ...base, rippleDir: 'along' });
+  fadeOut.loop.forEach((q, i) => {
+    if (q[0] < r + base.endFoot || q[0] > fadeOut.length - r - base.endFoot) assert.equal(fadeOut.lengthwise.shift[i], null, 'without the floor option feet and ends stay smooth');
+  });
+  for (const both of [false, true]) {
+    const p = { ...base, rippleDir: 'along', rippleFloors: true, rippleBoth: both };
+    const label = `along feet${both ? ', both sides' : ''}`;
+    const mesh = G.buildMesh(p), profile = mesh.profile, lw = profile.lengthwise;
+    const deep = profile.loop.map((q, i) => (lw.shift[i] ? [q[0] + lw.shift[i][0], q[1] + lw.shift[i][1]] : q));
+    assertSimpleOutline(deep, `${label}: deepest section`);
+    profile.loop.forEach((q, i) => {
+      if (q[1] > base.wall - 1e-9 && q[1] < base.wall + 1e-9 && (q[0] < r + base.endFoot - 0.5 || q[0] > profile.length - r - base.endFoot + 0.5)) {
+        assert.ok(lw.shift[i] && Math.abs(lw.shift[i][1] + 1) < 1e-9 && Math.abs(lw.shift[i][0]) < 1e-9, `${label}: the top of the feet is cut by the full depth`);
+      }
+    });
+    // At the bottom of a groove each end is a half circle between the cut top and the underside.
+    const radius = both ? r - 1 : r - 0.5, cz = both ? r : r - 0.5;
+    const cap = deep.filter((q, i) => profile.loop[i][0] < r - 1e-9);
+    assert.ok(cap.length >= 5, `${label}: cap points`);
+    for (const q of cap) assert.ok(Math.abs(Math.hypot(q[0] - r, q[1] - cz) - radius) < 1e-9, `${label}: grooved end is round`);
+    assert.ok(Math.abs(Math.min(...deep.map(q => q[0])) - (r - radius)) < 1e-9, `${label}: the end recedes by ${r - radius} mm in a groove`);
+    assert.ok(Math.abs(Math.max(...deep.map(q => q[0])) - (profile.length - r + radius)) < 1e-9, `${label}: same at the other end`);
+    const m = analyze(mesh);
+    assert.equal(m.openEdges, 0, `${label}: watertight`);
+    assert.equal(m.degenerate, 0, `${label}: no degenerate triangles`);
+    near(m.min, [0, 0, 0], `${label}: bounds`);
+    near(m.max, [profile.length, p.depth, p.height], `${label}: bounds`);
+  }
+});
+
 test('validation explains what does not fit', () => {
   const tooMany = G.validate({ ...G.DEFAULTS, count: 12 });
   assert.ok(tooMany.errors.some(e => e.includes('need at least')), 'reports the length that would be needed');

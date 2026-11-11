@@ -331,7 +331,7 @@
             <button type="button" id="rippleSoft" class="active">Soft waves</button>
             <button type="button" id="rippleRound">Round rolls</button>
           </div>
-          <label class="check"><input type="checkbox" id="rippleFloors"> Ripples on the slot floors too</label>
+          <label class="check"><input type="checkbox" id="rippleFloors"> Ripples on the floors and feet too</label>
           <label class="check"><input type="checkbox" id="rippleBoth"> Ripples on the underside too</label>
           <p class="help" id="rippleHelp"></p>
         </div>
@@ -445,7 +445,7 @@
         ripple: 0,         // depth of the grooves cut into the top surface in mm (0 = smooth)
         rippleSpacing: 6,  // distance between two grooves in mm
         rippleDir: 'cross',  // 'cross': grooves run front to back; 'along': grooves follow the wave along the length
-        rippleFloors: false, // also groove the slot floors
+        rippleFloors: false, // also groove the slot floors and the end feet
         rippleBoth: false,   // also groove the underside, in step with the top
         rippleShape: 'soft', // 'soft': wavy grooves; 'round': round ridges with a sharp crease between them, like rolls
         segments: 48
@@ -808,6 +808,9 @@
           for (const [i0, i1] of wallSpans) for (let i = i0; i < i1; i++) dense[i] = true;
           if (onFloors) {
             for (let k = 0; k + 1 < wallSpans.length; k++) for (let i = wallSpans[k][1]; i < wallSpans[k + 1][0]; i++) dense[i] = floorSeg[i] = true;
+            // The end feet count as floors.
+            for (let i = 0; i < wallSpans[0][0]; i++) dense[i] = floorSeg[i] = true;
+            for (let i = wallSpans[wallSpans.length - 1][1]; i < N; i++) dense[i] = floorSeg[i] = true;
           }
           const lerp = (a, b, u) => [a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u];
           // Where the underside was merged into a crease the wall is solid and
@@ -839,7 +842,8 @@
           C.push(...dC); T.push(...dT); B.push(...dB); tangents.push(...dTan);
           N = C.length - 1;
 
-          // Lengthwise grooves over the floors run through from wall to wall.
+          // Lengthwise grooves over the floors run through from one end of
+          // the rack to the other, feet and rounded ends included.
           const joined = along && onFloors;
           const lastWall = wallSpans.length - 1;
           const dead = 1.5 * p.wall, ramp = p.rippleSpacing;
@@ -891,8 +895,8 @@
             }
             for (let i = i0; i <= i1; i++) {
               const sAlong = cum[i - i0];
-              const left = joined && k > 0 ? 1 : smooth((sAlong - dead) / ramp);
-              const right = joined && k < lastWall ? 1 : smooth((total - sAlong - dead) / ramp);
+              const left = joined ? 1 : smooth((sAlong - dead) / ramp);
+              const right = joined ? 1 : smooth((total - sAlong - dead) / ramp);
               const fade = Math.min(left, right) * smooth((along ? solidDist[i] : toSolid[i - i0]) / ramp);
               if (fade <= 0) continue;
               if (along) { amp[i] = fade; continue; }
@@ -904,13 +908,17 @@
 
           if (onFloors && !along) {
             // A whole number of grooves per floor, so every floor starts and
-            // ends on a ridge at the stated floor level.
-            floorSpans.forEach(([a, b], k) => {
+            // ends on a ridge at the stated floor level. The end feet are
+            // grooved the same way, from the rounded end to the outer wall.
+            const spans = floorSpans.map(([a, b], k) => ({ a, b, i0: map[wallSpans[k][1]], i1: map[wallSpans[k + 1][0]] }));
+            spans.push({ a: C[0][0], b: C[0][0] + endFlat - delta, i0: 0, i1: map[wallSpans[0][0]] });
+            spans.push({ a: C[N][0] - endFlat + delta, b: C[N][0], i0: map[wallSpans[lastWall][1]], i1: N });
+            spans.forEach(({ a, b, i0, i1 }) => {
               const width = b - a;
               if (width < 2) return;
               const local = width / Math.max(1, Math.round(width / p.rippleSpacing));
               const deep = Math.min(ripple, local / 2);
-              for (let i = map[wallSpans[k][1]]; i <= map[wallSpans[k + 1][0]]; i++) {
+              for (let i = i0; i <= i1; i++) {
                 const q = T[i];
                 if (Math.abs(q[1] - p.wall) > 1e-7 || q[0] <= a + 1e-7 || q[0] >= b - 1e-7) continue;
                 const d = deep * grooveWeight(shape, (q[0] - a) / local, local, deep);
@@ -923,6 +931,8 @@
           if (along) {
             if (joined) {
               for (let k = 0; k < lastWall; k++) for (let i = map[wallSpans[k][1]]; i <= map[wallSpans[k + 1][0]]; i++) amp[i] = smooth(solidDist[i] / ramp);
+              for (let i = 0; i <= map[wallSpans[0][0]]; i++) amp[i] = smooth(solidDist[i] / ramp);
+              for (let i = map[wallSpans[lastWall][1]]; i <= N; i++) amp[i] = smooth(solidDist[i] / ramp);
             }
             ampUnder = both ? amp.map((a, i) => a * under[i]) : amp;
             // Extra points are only needed where the strength changes.
@@ -1015,6 +1025,17 @@
           if (both) shiftB = shifts(B, -1, ampUnder);
         }
 
+        // The rounded ends follow the grooves of the feet: at the bottom of a
+        // groove an end is the half circle between the lowered top and the
+        // (possibly raised) underside. th is the angle of the cap point.
+        const capShift = (i, th) => {
+          const sT = shiftT && shiftT[i], sB = shiftB && shiftB[i];
+          if (!sT && !sB) return null;
+          const dT = sT ? -sT[1] : 0, dB = sB ? sB[1] : 0;
+          const u = (1 + Math.sin(th)) / 2;
+          return [(sB ? sB[0] : 0) * (1 - u) + (sT ? sT[0] : 0) * u - (dT + dB) / 2 * Math.cos(th), dB * (1 - u) - dT * u];
+        };
+
         // Counter-clockwise outline (X right, Z up)
         const loop = [], loopShift = [];
         const pushLoop = (q, shift = null) => {
@@ -1024,9 +1045,9 @@
           loopShift.push(shift);
         };
         for (let i = 0; i <= N; i++) pushLoop(B[i], shiftB ? shiftB[i] : null);
-        endInterior.forEach(q => pushLoop(q));
+        endInterior.forEach((q, j) => pushLoop(q, capShift(N, -Math.PI / 2 + Math.PI * (j + 1) / m)));
         for (let i = N; i >= 0; i--) pushLoop(T[i], shiftT ? shiftT[i] : null);
-        startInterior.forEach(q => pushLoop(q));
+        startInterior.forEach((q, j) => pushLoop(q, capShift(0, Math.PI / 2 + Math.PI * (j + 1) / m)));
         const first = loop[0], last = loop[loop.length - 1];
         if (Math.abs(first[0] - last[0]) < 1e-9 && Math.abs(first[1] - last[1]) < 1e-9) { loop.pop(); loopShift.pop(); }
 
@@ -1712,11 +1733,11 @@
         $('rippleHelp').textContent = [
           p.rippleDir === 'along'
             ? (p.rippleFloors
-              ? 'The grooves follow the wave along the whole length, through walls and floors.'
-              : 'The grooves follow the wave along the length and fade out towards the floors.')
+              ? 'The grooves follow the wave along the whole length, from one outer edge to the other.'
+              : 'The grooves follow the wave along the length and fade out towards the floors and feet.')
             : (p.rippleFloors
-              ? 'The grooves run from front to back, on walls and floors. Boards rest on the ridges.'
-              : 'The grooves run from front to back and fade out towards the floors.'),
+              ? 'The grooves run from front to back, on walls, floors and feet. Boards rest on the ridges.'
+              : 'The grooves run from front to back and fade out towards the floors and feet.'),
           p.rippleBoth ? 'The underside gets the same grooves, in step with the top.' : '',
           p.rippleBoth && p.rippleShape === 'round' ? 'With a spacing close to the wall thickness the rack looks like it is built from rolls of clay.' : '',
           p.rippleDir === 'along' ? 'In print they are gentle overhangs that need no supports.' : ''
