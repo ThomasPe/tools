@@ -625,7 +625,6 @@
         }
         const length = fixed + floors.reduce((a, b) => a + b, 0);
 
-        if (p.style === 'sine' && flank.slopeDeg > 78) warnings.push(`Very steep flanks (${flank.slopeDeg.toFixed(0)}°). Consider a wider flank or a lower height.`);
         if (p.depth > 250) warnings.push(`Print height ${p.depth} mm: check that your printer's Z travel allows this.`);
         if (length > 600) warnings.push(`The rack is ${length.toFixed(0)} mm long: check that it fits your print bed.`);
 

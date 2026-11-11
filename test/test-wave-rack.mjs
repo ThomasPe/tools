@@ -250,7 +250,7 @@ test('validation explains what does not fit', () => {
   assert.ok(G.validate(custom([])).errors.some(e => e.includes('at least one slot')));
   assert.ok(G.validate(custom([10, -1])).errors.some(e => e.includes('zero or more')));
   assert.ok(G.validate({ ...G.DEFAULTS, depth: 300 }).warnings.some(w => w.includes('Print height')), 'warns about tall prints');
-  assert.ok(G.validate({ ...G.DEFAULTS, style: 'sine', flank: 10 }).warnings.some(w => w.includes('steep')), 'warns about steep waves');
+  assert.deepEqual(G.validate({ ...G.DEFAULTS, style: 'sine', flank: 10 }).warnings, [], 'steep waves are not flagged');
 });
 
 test('print orientation and binary STL export', () => {
